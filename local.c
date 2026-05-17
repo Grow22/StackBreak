@@ -85,6 +85,26 @@ static int char_hit_by_piece(int cells[4][2]) {
 }
 
 /* ──────────── Lock & Spawn ──────────── */
+
+/* 5/17, 다른 함수에서 apply_column_gravity 함수 호출 시 apply_column_gravity가 미정의된 문제가 발생하여 apply_column_gravity 함수 정의 위치를 위로 옮겼음.
+ */
+
+/* Apply gravity to a specific column after a block is removed.
+ * Blocks above the removed position fall down to fill the gap. */
+static void apply_column_gravity(int col) {
+    for (int r = BOARD_H - 1; r > 0; r--) {
+        if (g_state.board[r][col] == 0) {
+            /* find nearest block above */
+            for (int rr = r - 1; rr >= 0; rr--) {
+                if (g_state.board[rr][col] != 0) {
+                    g_state.board[r][col] = g_state.board[rr][col];
+                    g_state.board[rr][col] = 0;
+                    break;
+                }
+            }
+        }
+    }
+}
 static void lock_piece(void) {
     int cells[4][2];
     piece_cells(g_state.piece_type, g_state.piece_rot,
@@ -115,7 +135,13 @@ static void lock_piece(void) {
         if (r >= 0 && r < BOARD_H && c >= 0 && c < BOARD_W)
             g_state.board[r][c] = g_state.piece_type;
     }
+
+    /* 5/17 : 멀티 모드에서처럼 빈 공간없이 위에 있는 블록이 떨어지도록 함*/
+    for (int c = 0; c < BOARD_W; c++) {
+	    apply_column_gravity(c);
+    }
 }
+
 
 static int clear_lines(void) {
     int cleared = 0;
@@ -186,22 +212,6 @@ static void character_physics(void) {
     }
 }
 
-/* Apply gravity to a specific column after a block is removed.
- * Blocks above the removed position fall down to fill the gap. */
-static void apply_column_gravity(int col) {
-    for (int r = BOARD_H - 1; r > 0; r--) {
-        if (g_state.board[r][col] == 0) {
-            /* find nearest block above */
-            for (int rr = r - 1; rr >= 0; rr--) {
-                if (g_state.board[rr][col] != 0) {
-                    g_state.board[r][col] = g_state.board[rr][col];
-                    g_state.board[rr][col] = 0;
-                    break;
-                }
-            }
-        }
-    }
-}
 
 /* ──────────── Init ──────────── */
 static void init_game(void) {
