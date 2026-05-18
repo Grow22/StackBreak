@@ -23,6 +23,9 @@ static int       g_highscore = 0;
 /* Forward declarations */
 static void apply_column_gravity(int col);
 static void give_item(int item_type);
+static void add_effect(int type, int x, int y, int timer, int param);
+static void push_character_from_piece(int cells[4][2]);
+static void stun_character(void);
 
 /* ──────────── Signal Handler ──────────── */
 static void handle_signal(int sig) {
@@ -61,6 +64,37 @@ static int random_piece(void) {
     return (rand() % 7) + 1;  /* 1..7 */
 }
 
+static void add_effect(int type, int x, int y, int timer, int param) {
+    if (type == EFFECT_NONE || timer <= 0) return;
+
+    if (g_state.num_effects >= MAX_EFFECTS) {
+        memmove(&g_state.effects[0], &g_state.effects[1],
+                sizeof(VisualEffect) * (MAX_EFFECTS - 1));
+        g_state.num_effects = MAX_EFFECTS - 1;
+    }
+
+    VisualEffect *fx = &g_state.effects[g_state.num_effects++];
+    fx->type = type;
+    fx->x = x;
+    fx->y = y;
+    fx->timer = timer;
+    fx->param = param;
+}
+
+static void tick_effects(void) {
+    for (int i = 0; i < g_state.num_effects; i++) {
+        g_state.effects[i].timer--;
+        if (g_state.effects[i].timer <= 0) {
+            if (i < g_state.num_effects - 1) {
+                memmove(&g_state.effects[i], &g_state.effects[i + 1],
+                        sizeof(VisualEffect) * (g_state.num_effects - i - 1));
+            }
+            g_state.num_effects--;
+            i--;
+        }
+    }
+}
+
 /* ──────────── Init Game ──────────── */
 static void init_game(void) {
     memset(&g_state, 0, sizeof(g_state));
@@ -83,6 +117,7 @@ static void init_game(void) {
     g_state.ch.y = BOARD_H - 1;
     g_state.ch.carrying = 0;
     g_state.ch.stun_timer = 0;
+    g_state.ch.stun_invuln_timer = 0;
     g_state.ch.facing = 1;
     g_state.ch.inv_count = 0;
     g_state.ch.shield_timer = 0;
@@ -99,6 +134,8 @@ static void init_game(void) {
     g_state.attacker_hp = 5;
     g_state.attacker_stun_timer = 0;
     g_state.attacker_spawn_delay = 0;
+    g_state.num_bullets = 0;
+    g_state.num_effects = 0;
 }
 
 /* ──────────── Piece Helpers ──────────── */
@@ -137,6 +174,32 @@ static int char_hit_by_piece(int cells[4][2]) {
     return 0;
 }
 
+static void push_character_from_piece(int cells[4][2]) {
+    for (int dx = 1; dx < BOARD_W; dx++) {
+        int nx = g_state.ch.x + dx;
+        if (nx < BOARD_W && g_state.board[g_state.ch.y][nx] == 0) {
+            int overlap = 0;
+            for (int j = 0; j < 4; j++)
+                if (cells[j][0] == g_state.ch.y && cells[j][1] == nx)
+                    overlap = 1;
+            if (!overlap) { g_state.ch.x = nx; break; }
+        }
+        nx = g_state.ch.x - dx;
+        if (nx >= 0 && g_state.board[g_state.ch.y][nx] == 0) {
+            int overlap = 0;
+            for (int j = 0; j < 4; j++)
+                if (cells[j][0] == g_state.ch.y && cells[j][1] == nx)
+                    overlap = 1;
+            if (!overlap) { g_state.ch.x = nx; break; }
+        }
+    }
+}
+
+static void stun_character(void) {
+    g_state.ch.stun_timer = STUN_TICKS;
+    g_state.ch.stun_invuln_timer = STUN_TICKS + STUN_INVULN_TICKS;
+}
+
 /* Lock current piece onto board */
 static void lock_piece(void) {
     int cells[4][2];
@@ -148,28 +211,11 @@ static void lock_piece(void) {
         if (g_state.ch.shield_timer > 0) {
             /* shield is active: attacker gets stunned, defender is safe */
             g_state.attacker_stun_timer = 45; /* 1.5 seconds */
-        } else {
-            g_state.ch.stun_timer = STUN_TICKS;
-            /* push character to nearest empty cell */
-            for (int dx = 1; dx < BOARD_W; dx++) {
-                int nx = g_state.ch.x + dx;
-                if (nx < BOARD_W && g_state.board[g_state.ch.y][nx] == 0) {
-                    int overlap = 0;
-                    for (int j = 0; j < 4; j++)
-                        if (cells[j][0] == g_state.ch.y && cells[j][1] == nx)
-                            overlap = 1;
-                    if (!overlap) { g_state.ch.x = nx; break; }
-                }
-                nx = g_state.ch.x - dx;
-                if (nx >= 0 && g_state.board[g_state.ch.y][nx] == 0) {
-                    int overlap = 0;
-                    for (int j = 0; j < 4; j++)
-                        if (cells[j][0] == g_state.ch.y && cells[j][1] == nx)
-                            overlap = 1;
-                    if (!overlap) { g_state.ch.x = nx; break; }
-                }
-            }
+            add_effect(EFFECT_SHIELD, g_state.ch.x, g_state.ch.y, 10, 0);
+        } else if (g_state.ch.stun_invuln_timer == 0) {
+            stun_character();
         }
+        push_character_from_piece(cells);
     }
 
     /* place blocks on board */
@@ -503,6 +549,7 @@ static void process_char_input(int key) {
                     if (c >= 0 && c < BOARD_W) apply_column_gravity(c);
                 }
                 add_score(clear_lines());
+                add_effect(EFFECT_BOMB, g_state.ch.x, g_state.ch.y, 10, 4);
             } else if (item == 2) {
                 /* Drill: activate for 3 seconds */
                 g_state.ch.drill_timer = 90;
@@ -515,6 +562,7 @@ static void process_char_input(int key) {
                     g_state.bullets[g_state.num_bullets][0] = g_state.ch.x;
                     g_state.bullets[g_state.num_bullets][1] = g_state.ch.y;
                     g_state.num_bullets++;
+                    add_effect(EFFECT_GUN_FIRE, g_state.ch.x, g_state.ch.y, 6, 0);
                 }
             }
         }
@@ -570,9 +618,13 @@ static int gravity_counter = 0;
 static void game_tick(void) {
     if (!g_state.game_started || g_state.game_over) return;
 
+    tick_effects();
+
     /* character stun countdown */
     if (g_state.ch.stun_timer > 0)
         g_state.ch.stun_timer--;
+    if (g_state.ch.stun_invuln_timer > 0)
+        g_state.ch.stun_invuln_timer--;
 
     /* attacker stun countdown */
     if (g_state.attacker_stun_timer > 0)
@@ -591,12 +643,15 @@ static void game_tick(void) {
         g_state.ch.drill_crack_timer--;
         if (g_state.ch.drill_crack_timer == 0) {
             /* Drill finishes */
+            int tx = g_state.ch.drill_target_x;
+            int ty = g_state.ch.drill_target_y;
             if (g_state.board[g_state.ch.drill_target_y][g_state.ch.drill_target_x] >= 10) {
                 give_item(g_state.board[g_state.ch.drill_target_y][g_state.ch.drill_target_x] / 10);
             }
             g_state.board[g_state.ch.drill_target_y][g_state.ch.drill_target_x] = 0;
             apply_column_gravity(g_state.ch.drill_target_x);
             add_score(clear_lines());
+            add_effect(EFFECT_DRILL, tx, ty, 6, 0);
             g_state.ch.drill_target_x = -1;
             g_state.ch.drill_target_y = -1;
         }
@@ -648,8 +703,15 @@ static void game_tick(void) {
     int cells[4][2];
     piece_cells(g_state.piece_type, g_state.piece_rot,
                 g_state.piece_r, g_state.piece_c, cells);
-    if (char_hit_by_piece(cells) && g_state.ch.stun_timer == 0) {
-        g_state.ch.stun_timer = STUN_TICKS;
+    if (char_hit_by_piece(cells) && g_state.ch.stun_timer == 0 &&
+        g_state.ch.stun_invuln_timer == 0) {
+        if (g_state.ch.shield_timer > 0) {
+            if (g_state.attacker_stun_timer == 0)
+                add_effect(EFFECT_SHIELD, g_state.ch.x, g_state.ch.y, 10, 0);
+            g_state.attacker_stun_timer = 45;
+        } else {
+            stun_character();
+        }
     }
 
     /* bullet physics */
@@ -665,6 +727,7 @@ static void game_tick(void) {
             int boss_right = g_state.piece_c + 1;
             if (bx >= boss_left && bx <= boss_right) {
                 if (g_state.attacker_hp > 0) {
+                    add_effect(EFFECT_GUN_HIT, bx, -1, 10, 0);
                     g_state.attacker_hp--;
                     if (g_state.attacker_hp <= 0) {
                         g_state.attacker_hp = 0;

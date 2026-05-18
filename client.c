@@ -32,6 +32,13 @@ static volatile sig_atomic_t g_running = 1;
 #define COLOR_BORDER    10
 #define COLOR_GHOST     11
 #define COLOR_BG        12
+#define COLOR_BOMB_PREVIEW 13
+#define COLOR_BOMB_FLASH   14
+#define COLOR_DRILL_FX     15
+#define COLOR_SHIELD_FX    16
+#define COLOR_GUN_FX       17
+#define COLOR_HIT_FX       18
+#define COLOR_BOMB_BLOCK_PREVIEW 19
 
 static void init_colors(void) {
     start_color();
@@ -48,11 +55,22 @@ static void init_colors(void) {
     init_pair(COLOR_BORDER,    COLOR_WHITE,   COLOR_BLACK);
     init_pair(COLOR_GHOST,     COLOR_WHITE,   COLOR_BLACK); /* Fixed ghost color */
     init_pair(COLOR_BG,        COLOR_WHITE,   COLOR_BLACK);
+    init_pair(COLOR_BOMB_PREVIEW, COLOR_WHITE, COLOR_BLACK);
+    init_pair(COLOR_BOMB_FLASH,   COLOR_WHITE, COLOR_RED);
+    init_pair(COLOR_DRILL_FX,     COLOR_BLACK, COLOR_WHITE);
+    init_pair(COLOR_SHIELD_FX,    COLOR_BLACK, COLOR_CYAN);
+    init_pair(COLOR_GUN_FX,       COLOR_BLACK, COLOR_GREEN);
+    init_pair(COLOR_HIT_FX,       COLOR_WHITE, COLOR_MAGENTA);
+    init_pair(COLOR_BOMB_BLOCK_PREVIEW, COLOR_BLACK, COLOR_YELLOW);
 }
 
 static int piece_color(int type) {
     if (type >= 1 && type <= 7) return type;
     return COLOR_BG;
+}
+
+static double ticks_to_seconds(int ticks) {
+    return ticks / 30.0;
 }
 
 /* ──────────── Signal Handler ──────────── */
@@ -136,6 +154,106 @@ static void draw_cell(WINDOW *win, int y, int x, int type, int is_ghost, int ite
     }
 }
 
+static void draw_bomb_preview_cell(WINDOW *win, int y, int x, int type) {
+    if (type == 0) {
+        wattron(win, COLOR_PAIR(COLOR_BOMB_PREVIEW));
+        mvwprintw(win, y, x, "..");
+        wattroff(win, COLOR_PAIR(COLOR_BOMB_PREVIEW));
+    } else {
+        int item_type = type / 10;
+
+        wattron(win, COLOR_PAIR(COLOR_BOMB_BLOCK_PREVIEW) | A_BOLD);
+        if (item_type == 1) mvwprintw(win, y, x, "B ");
+        else if (item_type == 2) mvwprintw(win, y, x, "D ");
+        else if (item_type == 3) mvwprintw(win, y, x, "S ");
+        else if (item_type == 4) mvwprintw(win, y, x, "G ");
+        else mvwprintw(win, y, x, "  ");
+        wattroff(win, COLOR_PAIR(COLOR_BOMB_BLOCK_PREVIEW) | A_BOLD);
+    }
+}
+
+static int has_ready_bomb(const GameState *st) {
+    return st->ch.inv_count > 0 && st->ch.inventory[0] == 1;
+}
+
+static int has_inventory_item(const GameState *st, int item_type) {
+    for (int i = 0; i < st->ch.inv_count; i++) {
+        if (st->ch.inventory[i] == item_type)
+            return 1;
+    }
+    return 0;
+}
+
+static int is_bomb_preview_cell(const GameState *st, int r, int c) {
+    if (st->game_over || !has_ready_bomb(st))
+        return 0;
+    if (r == st->ch.y && c == st->ch.x)
+        return 0;
+
+    int left = st->ch.x - 2;
+    int top = st->ch.y - 2;
+
+    return r >= top && r < top + 4 && c >= left && c < left + 4;
+}
+
+static void draw_effect_cell(WINDOW *win, int y, int x, int color, const char *text) {
+    int max_y, max_x;
+    getmaxyx(win, max_y, max_x);
+    if (y < 0 || y >= max_y || x < 0 || x + 1 >= max_x)
+        return;
+
+    wattron(win, COLOR_PAIR(color) | A_BOLD);
+    mvwprintw(win, y, x, "%s", text);
+    wattroff(win, COLOR_PAIR(color) | A_BOLD);
+}
+
+static void draw_effects(const GameState *st, int start_y, int start_x) {
+    int count = st->num_effects;
+    if (count < 0) count = 0;
+    if (count > MAX_EFFECTS) count = MAX_EFFECTS;
+
+    for (int i = 0; i < count; i++) {
+        const VisualEffect *fx = &st->effects[i];
+
+        if (fx->type == EFFECT_BOMB) {
+            int left = fx->x - 2;
+            int top = fx->y - 2;
+            const char *text = (fx->timer > 6) ? "**" :
+                               (fx->timer > 3) ? "!!" : "..";
+            for (int r = top; r < top + 4; r++) {
+                for (int c = left; c < left + 4; c++) {
+                    if (r < 0 || r >= BOARD_H || c < 0 || c >= BOARD_W)
+                        continue;
+                    draw_effect_cell(stdscr, start_y + 1 + r,
+                                     start_x + 1 + c * CELL_W,
+                                     COLOR_BOMB_FLASH, text);
+                }
+            }
+        } else if (fx->type == EFFECT_DRILL) {
+            if (fx->y >= 0 && fx->y < BOARD_H && fx->x >= 0 && fx->x < BOARD_W) {
+                draw_effect_cell(stdscr, start_y + 1 + fx->y,
+                                 start_x + 1 + fx->x * CELL_W,
+                                 COLOR_DRILL_FX, "!!");
+            }
+        } else if (fx->type == EFFECT_SHIELD) {
+            if (fx->y >= 0 && fx->y < BOARD_H && fx->x >= 0 && fx->x < BOARD_W)
+                draw_effect_cell(stdscr, start_y + 1 + fx->y,
+                                 start_x + 1 + fx->x * CELL_W,
+                                 COLOR_SHIELD_FX, "<>");
+        } else if (fx->type == EFFECT_GUN_FIRE) {
+            if (fx->y >= 0 && fx->y < BOARD_H && fx->x >= 0 && fx->x < BOARD_W)
+                draw_effect_cell(stdscr, start_y + 1 + fx->y,
+                                 start_x + 1 + fx->x * CELL_W,
+                                 COLOR_GUN_FX, "||");
+        } else if (fx->type == EFFECT_GUN_HIT) {
+            int y = (fx->y < 0) ? start_y : start_y + 1 + fx->y;
+            int x = start_x + 1 + fx->x * CELL_W;
+            if (fx->x >= 0 && fx->x < BOARD_W)
+                draw_effect_cell(stdscr, y, x, COLOR_HIT_FX, "!!");
+        }
+    }
+}
+
 static void render(void) {
     pthread_mutex_lock(&g_lock);
     GameState st = g_state;
@@ -177,11 +295,15 @@ static void render(void) {
             int sx = start_x + 1 + c * CELL_W;
             if (r == st.ch.drill_target_y && c == st.ch.drill_target_x && st.ch.drill_crack_timer > 0) {
                 /* Drill Cracking Animation */
-                wattron(stdscr, COLOR_PAIR(COLOR_BORDER) | A_BOLD);
-                if (st.ch.drill_crack_timer > 10) mvwprintw(stdscr, sy, sx, "▓▓");
-                else if (st.ch.drill_crack_timer > 5) mvwprintw(stdscr, sy, sx, "▒▒");
-                else mvwprintw(stdscr, sy, sx, "░░");
-                wattroff(stdscr, COLOR_PAIR(COLOR_BORDER) | A_BOLD);
+                int phase = ((st.ch.drill_crack_timer - 1) * 4) / 15 + 1;
+                if (phase < 1) phase = 1;
+                if (phase > 4) phase = 4;
+                wattron(stdscr, COLOR_PAIR(COLOR_DRILL_FX) | A_BOLD);
+                mvwprintw(stdscr, sy, sx, "%d ", phase);
+                wattroff(stdscr, COLOR_PAIR(COLOR_DRILL_FX) | A_BOLD);
+            } else if (is_bomb_preview_cell(&st, r, c)) {
+                draw_cell(stdscr, sy, sx, st.board[r][c], 0, 0);
+                draw_bomb_preview_cell(stdscr, sy, sx, st.board[r][c]);
             } else {
                 draw_cell(stdscr, sy, sx, st.board[r][c], 0, 0);
             }
@@ -226,6 +348,10 @@ static void render(void) {
             int sy = start_y + 1 + cr;
             int sx = start_x + 1 + cc * CELL_W;
             int cp = (st.ch.stun_timer > 0) ? COLOR_CHAR_STUN : COLOR_CHAR;
+            if (st.ch.stun_timer == 0 && st.ch.shield_timer > 0)
+                cp = COLOR_SHIELD_FX;
+            else if (st.ch.stun_timer == 0 && st.ch.drill_timer > 0)
+                cp = COLOR_DRILL_FX;
             attron(COLOR_PAIR(cp) | A_BOLD);
             if (st.ch.stun_timer > 0)
                 mvprintw(sy, sx, "XX");
@@ -235,6 +361,10 @@ static void render(void) {
                 if (st.ch.facing == -1) mvprintw(sy, sx, "+@");
                 else if (st.ch.facing == 1) mvprintw(sy, sx, "@+");
                 else mvprintw(sy, sx, "v@");
+            } else if (st.ch.drill_timer > 0 || has_inventory_item(&st, 2)) {
+                if (st.ch.facing == -1) mvprintw(sy, sx, "<D");
+                else if (st.ch.facing == 1) mvprintw(sy, sx, "D>");
+                else mvprintw(sy, sx, "vD");
             } else {
                 if (st.ch.facing == -1) mvprintw(sy, sx, "<@");
                 else if (st.ch.facing == 1) mvprintw(sy, sx, "@>");
@@ -276,6 +406,8 @@ static void render(void) {
         attroff(COLOR_PAIR(cp) | A_BOLD);
     }
 
+    draw_effects(&st, start_y, start_x);
+
     /* ── Side panel ── */
     int panel_x = start_x + board_w + 2;
     int panel_y = start_y + 1;
@@ -313,7 +445,8 @@ static void render(void) {
     }
     if (st.attacker_stun_timer > 0) {
         attron(COLOR_PAIR(COLOR_CHAR_STUN) | A_BOLD);
-        mvprintw(panel_y++, panel_x, "STUNNED! (%d)", st.attacker_stun_timer);
+        mvprintw(panel_y++, panel_x, "STUNNED! %.1fs",
+                 ticks_to_seconds(st.attacker_stun_timer));
         attroff(COLOR_PAIR(COLOR_CHAR_STUN) | A_BOLD);
     } else {
         mvprintw(panel_y++, panel_x, "Status: OK");
@@ -323,7 +456,11 @@ static void render(void) {
     /* Character status */
     mvprintw(panel_y++, panel_x, "--- Defender ---");
     if (st.ch.stun_timer > 0)
-        mvprintw(panel_y++, panel_x, "STUNNED! (%d)", st.ch.stun_timer);
+        mvprintw(panel_y++, panel_x, "STUNNED! %.1fs",
+                 ticks_to_seconds(st.ch.stun_timer));
+    else if (st.ch.stun_invuln_timer > 0)
+        mvprintw(panel_y++, panel_x, "INVULN! %.1fs",
+                 ticks_to_seconds(st.ch.stun_invuln_timer));
     else
         mvprintw(panel_y++, panel_x, "Status: OK");
 

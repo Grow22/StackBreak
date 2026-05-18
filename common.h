@@ -24,11 +24,21 @@
 /* ──────────── Network ──────────── */
 #define DEFAULT_PORT 9190
 #define MAX_CLIENTS  2
+#define MAX_BULLETS  3
+#define MAX_EFFECTS  12
+
+#define EFFECT_NONE      0
+#define EFFECT_BOMB      1
+#define EFFECT_DRILL     2
+#define EFFECT_SHIELD    3
+#define EFFECT_GUN_FIRE  4
+#define EFFECT_GUN_HIT   5
 
 /* ──────────── Timing (microseconds) ──────────── */
 #define TICK_US       33333   /* ~30 fps */
 #define INITIAL_DROP  30      /* ticks between auto-drops */
 #define STUN_TICKS    60      /* 2 seconds at 30fps */
+#define STUN_INVULN_TICKS 60  /* 2 seconds after stun ends */
 #define LOCK_DELAY    15      /* ticks before piece locks */
 
 /* ──────────── Piece types ──────────── */
@@ -109,6 +119,7 @@ typedef struct {
     int x, y;           /* board position (col, row) */
     int carrying;       /* 0=none, 1-7=block type */
     int stun_timer;     /* ticks remaining */
+    int stun_invuln_timer; /* ticks remaining until stun can happen again */
     int facing;         /* -1=left, 1=right */
     int jump_vel;       /* remaining upward ticks (0=not jumping) */
     int inventory[3];   /* 3 item slots */
@@ -119,6 +130,13 @@ typedef struct {
     int drill_target_y;
     int drill_crack_timer;
 } Character;
+
+typedef struct {
+    int type;
+    int x, y;           /* board position (col, row) */
+    int timer;          /* ticks remaining */
+    int param;          /* effect-specific size/state */
+} VisualEffect;
 
 /* ──────────── Game State ──────────── */
 typedef struct {
@@ -146,6 +164,10 @@ typedef struct {
     int attacker_hp;
     int attacker_stun_timer;
     int attacker_spawn_delay;
+    int num_bullets;
+    int bullets[MAX_BULLETS][2];  /* [i][0]=col, [i][1]=row */
+    int num_effects;
+    VisualEffect effects[MAX_EFFECTS];
 } GameState;
 
 /* ──────────── Protocol ──────────── */
