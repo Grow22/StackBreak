@@ -2,7 +2,7 @@ CC      = gcc
 CFLAGS  = -Wall -Wextra -O2
 LDFLAGS_SERVER = -lpthread
 LDFLAGS_CLIENT = -lpthread -lncurses
-LDFLAGS_LOCAL  = -lncurses
+LDFLAGS_LOCAL  = -lncursesw
 
 all: server client local
 
