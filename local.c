@@ -9,7 +9,8 @@
 #include "common.h"
 #include <ncurses.h>
 #include <locale.h>
-
+#include <sys/ioctl.h>	// 창 크기 자동 조정
+#include <unistd.h>	// ""
 /* ──────────── Global State ──────────── */
 static GameState g_state;
 static volatile sig_atomic_t g_running = 1;
@@ -570,7 +571,7 @@ static void init_game(void) {
     g_state.ch.facing = 1;
     g_state.ch.drill_target_x = -1; g_state.ch.drill_target_y = -1;
     g_state.level = 1; g_state.game_started = 1;
-    g_state.attacker_hp = 5;
+    g_state.attacker_hp = 3;	// 5/21 수정 : 체력 - 5->3
     g_num_particles = 0;
     g_shake_timer = 0; g_shake_intensity = 0;
     g_lock_flash_timer = 0;
@@ -902,8 +903,8 @@ static void draw_particles(int sy, int sx) {
 /* ──────────── Render ──────────── */
 static void render(void) {
     int my, mx; getmaxyx(stdscr,my,mx);
-    int bh = BOARD_H+2, bw = BOARD_W*CELL_W+2;
-    int sy = (my-bh)/2, sx = (mx-bw)/2-8;
+    int bh = BOARD_H+2, bw = BOARD_W*CELL_W+2;  // 5/21 수정 : BOARD_H - 2 -> BOARD_H+2
+    int sy = (my-bh)/2, sx = (mx-bw)/2-8;	// 5/21 수정
     if (sy<6) sy=6;
     if (sx<0) sx=0;
 
@@ -1047,7 +1048,7 @@ static void render(void) {
     /* Space Invader boss (moves with piece_c) */
     if (g_state.attacker_hp > 0) {
         int inv_x = sx + 1 + (g_state.piece_c - 2) * CELL_W;
-        int inv_y = sy - INVADER_H;
+        int inv_y = sy - INVADER_H - 1;	// 5/21 수정 : inv_y = sy - INVADER_H -> inv_y = sy - INVADER_H - 1
         static int inv_anim = 0;
         inv_anim++;
         draw_invader(inv_y, inv_x, inv_anim / 15,
@@ -1059,14 +1060,14 @@ static void render(void) {
     draw_particles(sy, sx);
 
     /* ── Side Panel ── */
-    int px = sx+bw+2, py = sy+1;
+    int px = sx+bw+4, py = sy/3-1; // 5/21 수정: py = sy + 1 -> py = sy/3-1, px = sx+bw+2 -> px = sx+bw+4
     attron(A_BOLD); mvprintw(py,px,"TETRIS VS"); attroff(A_BOLD);
-    py+=2;
+    py+=1;	// 5/21 수정: py+=2 -> py+=1
     mvprintw(py++,px,"Score: %d",g_state.score);
     mvprintw(py++,px,"Level: %d",g_state.level);
     mvprintw(py++,px,"Lines: %d",g_state.lines);
     mvprintw(py++,px,"High : %d",g_highscore);
-    py++;
+	// 5/21 수정: py++ 제거
 
     /* Combo */
     if (g_combo_timer > 0 && g_combo > 1) {
@@ -1088,10 +1089,10 @@ static void render(void) {
     /* Attacker */
     mvprintw(py++,px,"--- Attacker ---");
     mvprintw(py,px,"HP: ");
-    for(int i=0;i<5;i++) {
-        if(i<g_state.attacker_hp) { attron(COLOR_PAIR(5)|A_BOLD); printw("<3"); attroff(COLOR_PAIR(5)|A_BOLD); }
-        else { attron(A_DIM); printw(".."); attroff(A_DIM); }
-        printw(" ");
+    for(int i=0;i<3;i++) {	// 5/21 수정 : 5->3 체력 수정.
+        if(i<g_state.attacker_hp) { attron(COLOR_PAIR(5)|A_BOLD); printw("O"); attroff(COLOR_PAIR(5)|A_BOLD); }
+        else { attron(A_DIM); printw(" "); attroff(A_DIM); }
+        printw(" ");	// 5/21 수정 : <3 -> O, printw("..") 제거
     }
     py++;
     if (g_state.attacker_stun_timer>0) {
@@ -1404,6 +1405,12 @@ int main(void) {
 
     load_highscore();
     init_game();
+
+    // 5/21 수정 : 창 크기 자동 설정
+    printf("\033[8;28;60t");
+    fflush(stdout);
+    usleep(50000);
+    //
 
     setlocale(LC_ALL,"");
     initscr(); cbreak(); noecho(); curs_set(0);

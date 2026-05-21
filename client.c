@@ -634,6 +634,13 @@ int main(int argc, char *argv[]) {
     /* check terminal size */
     int rows, cols;
     struct winsize ws;
+
+    // 5/21 수정 : 창 크기 자동 설정
+    printf("\033[8;28;60t");
+    fflush(stdout);
+    usleep(50000);
+    //
+
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0) {
         rows = ws.ws_row;
         cols = ws.ws_col;
