@@ -20,6 +20,7 @@ static int gravity_counter = 0;
 
 #define HIGHSCORE_FILE "highscore.dat"
 #define CELL_W 2
+#define HARD_DROP_COOLDOWN_TICKS 90
 
 /* ──────────── Particle System ──────────── */
 #define MAX_PARTICLES 48
@@ -64,6 +65,9 @@ static int g_bomb_flash_timer = 0;
 
 /* ──────────── Bowser Hit Flash ──────────── */
 static int g_bowser_hit_timer = 0;
+
+/* Attacker hard-drop cooldown */
+static int g_harddrop_cooldown_timer = 0;
 
 /* Forward declarations */
 static void apply_column_gravity(int col);
@@ -236,6 +240,15 @@ static void draw_invader(int top_y, int left_x, int frame,
                 continue;
 
             int cp = 4; /* green (original arcade color) */
+            if (g_harddrop_cooldown_timer > 0) {
+                int elapsed = HARD_DROP_COOLDOWN_TICKS - g_harddrop_cooldown_timer;
+                if (elapsed < 0) elapsed = 0;
+                if (elapsed > HARD_DROP_COOLDOWN_TICKS)
+                    elapsed = HARD_DROP_COOLDOWN_TICKS;
+                int restored_rows = (elapsed * INVADER_H) / HARD_DROP_COOLDOWN_TICKS;
+                if (r < INVADER_H - restored_rows)
+                    cp = 5; /* cooldown heat: red recedes upward */
+            }
             if (hit) cp = 5; /* flash red on hit */
 
             int dy = top_y + r;
@@ -357,6 +370,31 @@ static int char_hit_by_piece(int cells[4][2]) {
 }
 
 /* ──────────── Lock Piece ──────────── */
+static int harddrop_sweep_hits_character(int start_r, int end_r) {
+    if (g_state.ch.stun_timer > 0 || g_state.ch.stun_invuln_timer > 0)
+        return 0;
+
+    for (int pr = start_r; pr <= end_r; pr++) {
+        int cells[4][2];
+        piece_cells(g_state.piece_type, g_state.piece_rot,
+                    pr, g_state.piece_c, cells);
+        if (!char_hit_by_piece(cells))
+            continue;
+
+        if (g_state.ch.shield_timer > 0) {
+            g_state.attacker_stun_timer = 45;
+            add_effect(EFFECT_SHIELD, g_state.ch.x, g_state.ch.y, 10, 0);
+            spawn_shield_burst(g_state.ch.x, g_state.ch.y);
+        } else {
+            stun_character();
+            spawn_stun_stars(g_state.ch.x, g_state.ch.y);
+        }
+        push_character_from_piece(cells);
+        return 1;
+    }
+    return 0;
+}
+
 static void lock_piece(void) {
     int cells[4][2];
     piece_cells(g_state.piece_type, g_state.piece_rot,
@@ -580,6 +618,7 @@ static void init_game(void) {
     g_was_on_ground = 1;
     g_bomb_flash_timer = 0;
     g_bowser_hit_timer = 0;
+    g_harddrop_cooldown_timer = 0;
 }
 
 /* ──────────── Game Tick ──────────── */
@@ -590,9 +629,16 @@ static void game_tick(void) {
     tick_particles();
 
     /* Countdown timers */
-    if (g_state.ch.stun_timer > 0) g_state.ch.stun_timer--;
+    if (g_state.ch.stun_timer > 0) {
+        g_state.ch.stun_timer--;
+        if (g_state.ch.stun_timer == 0 && g_state.ch.stun_invuln_timer > 0) {
+            add_effect(EFFECT_SHIELD, g_state.ch.x, g_state.ch.y, 10, 0);
+            spawn_shield_burst(g_state.ch.x, g_state.ch.y);
+        }
+    }
     if (g_state.ch.stun_invuln_timer > 0) g_state.ch.stun_invuln_timer--;
     if (g_state.attacker_stun_timer > 0) g_state.attacker_stun_timer--;
+    if (g_harddrop_cooldown_timer > 0) g_harddrop_cooldown_timer--;
     if (g_state.ch.shield_timer > 0) g_state.ch.shield_timer--;
     if (g_state.ch.drill_timer > 0) g_state.ch.drill_timer--;
     if (g_lock_flash_timer > 0) g_lock_flash_timer--;
@@ -1021,9 +1067,14 @@ static void render(void) {
             }
 
             /* Shield bubble (1-cell size) */
-            if (g_state.ch.shield_timer > 0 && !g_state.ch.stun_timer) {
+            int invuln_shield_timer = 0;
+            if (g_state.ch.shield_timer > 0)
+                invuln_shield_timer = g_state.ch.shield_timer;
+            else if (g_state.ch.stun_timer == 0 && g_state.ch.stun_invuln_timer > 0)
+                invuln_shield_timer = g_state.ch.stun_invuln_timer;
+            if (invuln_shield_timer > 0 && !g_state.ch.stun_timer) {
                 int attr = COLOR_PAIR(16)|A_BOLD;
-                if (g_state.ch.shield_timer%4<2) attr |= A_REVERSE;
+                if (invuln_shield_timer%4<2) attr |= A_REVERSE;
                 attron(attr);
                 if (cy-1 > sy)
                     mvprintw(cy-1, cx-1, "/--\\");
@@ -1100,6 +1151,15 @@ static void render(void) {
         mvprintw(py++,px,"STUNNED! %.1fs",ticks_to_sec(g_state.attacker_stun_timer));
         attroff(COLOR_PAIR(9)|A_BOLD);
     } else mvprintw(py++,px,"Status: OK");
+    if (g_harddrop_cooldown_timer > 0) {
+        attron(COLOR_PAIR(5)|A_BOLD);
+        mvprintw(py++,px,"Harddrop CD: %.1fs",ticks_to_sec(g_harddrop_cooldown_timer));
+        attroff(COLOR_PAIR(5)|A_BOLD);
+    } else {
+        attron(COLOR_PAIR(4)|A_BOLD);
+        mvprintw(py++,px,"Harddrop: READY");
+        attroff(COLOR_PAIR(4)|A_BOLD);
+    }
     py++;
 
     /* Defender */
@@ -1271,10 +1331,13 @@ static void handle_input(void) {
                 { g_state.piece_r++; g_state.score+=1; }
             break;
         case ' ': {
+            if (g_harddrop_cooldown_timer > 0)
+                break;
             int sr = g_state.piece_r;
             while(piece_valid(g_state.piece_type,g_state.piece_rot,
                               g_state.piece_r+1,g_state.piece_c))
                 { g_state.piece_r++; g_state.score+=2; }
+            harddrop_sweep_hits_character(sr, g_state.piece_r);
             int cells[4][2];
             piece_cells(g_state.piece_type,g_state.piece_rot,
                         g_state.piece_r,g_state.piece_c,cells);
@@ -1285,6 +1348,7 @@ static void handle_input(void) {
             do_score_and_combo(clear_lines());
             g_state.piece_type=0;
             g_state.attacker_spawn_delay=18;
+            g_harddrop_cooldown_timer = HARD_DROP_COOLDOWN_TICKS;
             drop_counter=0;
             break; }
         }
