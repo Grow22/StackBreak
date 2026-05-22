@@ -21,6 +21,7 @@ static int gravity_counter = 0;
 #define HIGHSCORE_FILE "highscore.dat"
 #define CELL_W 2
 #define HARD_DROP_COOLDOWN_TICKS 90
+#define SOFT_DROP_COOLDOWN_TICKS 6		// 5/23 수정 : 소프트드롭 쿨타임 0.2초
 
 /* ──────────── Particle System ──────────── */
 #define MAX_PARTICLES 48
@@ -68,6 +69,7 @@ static int g_bowser_hit_timer = 0;
 
 /* Attacker hard-drop cooldown */
 static int g_harddrop_cooldown_timer = 0;
+static int g_softdrop_cooldown_timer = 0;
 
 /* Forward declarations */
 static void apply_column_gravity(int col);
@@ -247,8 +249,14 @@ static void draw_invader(int top_y, int left_x, int frame,
                     elapsed = HARD_DROP_COOLDOWN_TICKS;
                 int restored_rows = (elapsed * INVADER_H) / HARD_DROP_COOLDOWN_TICKS;
                 if (r < INVADER_H - restored_rows)
-                    cp = 5; /* cooldown heat: red recedes upward */
+                    cp = 31; /* cooldown heat: gray recedes upward */
             }
+	    if (g_softdrop_cooldown_timer > 0) {
+		int elapsed2 = SOFT_DROP_COOLDOWN_TICKS - g_softdrop_cooldown_timer;
+		if (elapsed2 < 0) elapsed2 = 0;
+		if (elapsed2 > SOFT_DROP_COOLDOWN_TICKS)
+			elapsed2 = SOFT_DROP_COOLDOWN_TICKS;
+	    }
             if (hit) cp = 5; /* flash red on hit */
 
             int dy = top_y + r;
@@ -641,6 +649,7 @@ static void init_game(void) {
     g_bomb_flash_timer = 0;
     g_bowser_hit_timer = 0;
     g_harddrop_cooldown_timer = 0;
+    g_softdrop_cooldown_timer = 0;
 }
 
 /* ──────────── Game Tick ──────────── */
@@ -668,6 +677,7 @@ static void game_tick(void) {
     if (g_state.ch.stun_invuln_timer > 0) g_state.ch.stun_invuln_timer--;
     if (g_state.attacker_stun_timer > 0) g_state.attacker_stun_timer--;
     if (g_harddrop_cooldown_timer > 0) g_harddrop_cooldown_timer--;
+    if (g_softdrop_cooldown_timer > 0) g_softdrop_cooldown_timer--;
     if (g_state.ch.shield_timer > 0) g_state.ch.shield_timer--;
     if (g_state.ch.drill_timer > 0) g_state.ch.drill_timer--;
     if (g_lock_flash_timer > 0) g_lock_flash_timer--;
@@ -864,6 +874,9 @@ static void init_colors(void) {
     init_pair(20, COLOR_YELLOW, COLOR_BLACK);  /* Pac-Man body (half-block fg) */
     init_pair(21, COLOR_RED, COLOR_BLACK);     /* Pac-Man stunned (half-block fg) */
     init_pair(22, COLOR_GREEN, COLOR_BLACK);   /* Pac-Man drill (half-block fg) */
+
+    init_pair(30, COLOR_WHITE, 208);	/* Bomb prev Color */
+    init_pair(31, COLOR_WHITE, 240);	/* Boss HardDrop-CoolTime */
 }
 
 static int piece_color(int t) { return (t>=1&&t<=7)?t:12; }
@@ -930,7 +943,7 @@ static void draw_bomb_prev(int y, int x, int type) {
         attron(COLOR_PAIR(13)); mvprintw(y,x,".."); attroff(COLOR_PAIR(13));
     } else {
         int it=type/10;
-        attron(COLOR_PAIR(19)|A_BOLD);
+        attron(COLOR_PAIR(30)|A_BOLD);
         if(it==1) mvprintw(y,x,"B "); else if(it==2) mvprintw(y,x,"D ");
         else if(it==3) mvprintw(y,x,"S "); else if(it==4) mvprintw(y,x,"G ");
         else mvprintw(y,x,"  ");
@@ -1369,9 +1382,13 @@ static void handle_input(void) {
                 { g_state.piece_rot=nr; g_state.piece_c++; }
             break; }
         case 's': case 'S':
-            if(piece_valid(g_state.piece_type,g_state.piece_rot,
+		if (g_softdrop_cooldown_timer > 0)
+			break;	
+		if(piece_valid(g_state.piece_type,g_state.piece_rot,
                            g_state.piece_r+1,g_state.piece_c))
                 { g_state.piece_r++; g_state.score+=1; }
+
+	        g_softdrop_cooldown_timer = SOFT_DROP_COOLDOWN_TICKS;
             break;
         case ' ': {
             if (g_harddrop_cooldown_timer > 0)
@@ -1392,6 +1409,7 @@ static void handle_input(void) {
             g_state.piece_type=0;
             g_state.attacker_spawn_delay=18;
             g_harddrop_cooldown_timer = HARD_DROP_COOLDOWN_TICKS;
+	    g_softdrop_cooldown_timer = SOFT_DROP_COOLDOWN_TICKS;
             drop_counter=0;
             break; }
         }
