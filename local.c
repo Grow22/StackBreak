@@ -336,6 +336,13 @@ static void push_character_from_piece(int cells[4][2]) {
     }
 }
 
+/* Push character up until not inside a block */
+static void escape_up(void) {
+    while (g_state.ch.y >= 0 && g_state.board[g_state.ch.y][g_state.ch.x] != 0)
+        g_state.ch.y--;
+    if (g_state.ch.y < 0) g_state.ch.y = 0;
+}
+
 static void stun_character(void) {
     g_state.ch.stun_timer = STUN_TICKS;
     g_state.ch.stun_invuln_timer = STUN_TICKS + STUN_INVULN_TICKS;
@@ -420,6 +427,21 @@ static void lock_piece(void) {
         }
     }
     for (int c = 0; c < BOARD_W; c++) apply_column_gravity(c);
+
+    /* After gravity: check if character is now inside a block */
+    if (g_state.ch.y >= 0 && g_state.ch.y < BOARD_H &&
+        g_state.ch.x >= 0 && g_state.ch.x < BOARD_W &&
+        g_state.board[g_state.ch.y][g_state.ch.x] != 0) {
+        if (g_state.ch.shield_timer > 0) {
+            g_state.attacker_stun_timer = 45;
+            add_effect(EFFECT_SHIELD, g_state.ch.x, g_state.ch.y, 10, 0);
+            spawn_shield_burst(g_state.ch.x, g_state.ch.y);
+        } else if (g_state.ch.stun_invuln_timer == 0) {
+            stun_character();
+            spawn_stun_stars(g_state.ch.x, g_state.ch.y);
+        }
+        escape_up();
+    }
 }
 
 /* ──────────── Clear Lines ──────────── */
@@ -631,9 +653,16 @@ static void game_tick(void) {
     /* Countdown timers */
     if (g_state.ch.stun_timer > 0) {
         g_state.ch.stun_timer--;
-        if (g_state.ch.stun_timer == 0 && g_state.ch.stun_invuln_timer > 0) {
-            add_effect(EFFECT_SHIELD, g_state.ch.x, g_state.ch.y, 10, 0);
-            spawn_shield_burst(g_state.ch.x, g_state.ch.y);
+        if (g_state.ch.stun_timer == 0) {
+            /* Stun ended: escape if stuck inside a block */
+            if (g_state.ch.y >= 0 && g_state.ch.y < BOARD_H &&
+                g_state.ch.x >= 0 && g_state.ch.x < BOARD_W &&
+                g_state.board[g_state.ch.y][g_state.ch.x] != 0)
+                escape_up();
+            if (g_state.ch.stun_invuln_timer > 0) {
+                add_effect(EFFECT_SHIELD, g_state.ch.x, g_state.ch.y, 10, 0);
+                spawn_shield_burst(g_state.ch.x, g_state.ch.y);
+            }
         }
     }
     if (g_state.ch.stun_invuln_timer > 0) g_state.ch.stun_invuln_timer--;
