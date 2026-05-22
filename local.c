@@ -806,7 +806,7 @@ static void game_tick(void) {
 static void init_colors(void) {
     start_color();
     init_pair(1, COLOR_WHITE, COLOR_CYAN);
-    init_pair(2, COLOR_WHITE, COLOR_YELLOW);
+    init_pair(2, COLOR_BLACK, COLOR_WHITE);
     init_pair(3, COLOR_WHITE, COLOR_MAGENTA);
     init_pair(4, COLOR_WHITE, COLOR_GREEN);
     init_pair(5, COLOR_WHITE, COLOR_RED);
@@ -824,12 +824,21 @@ static void init_colors(void) {
     init_pair(17, COLOR_BLACK, COLOR_GREEN);
     init_pair(18, COLOR_WHITE, COLOR_MAGENTA);
     init_pair(19, COLOR_BLACK, COLOR_YELLOW);
+    /* Black-text versions of piece colors (for item letters) */
+    init_pair(23, COLOR_BLACK, COLOR_CYAN);
+    init_pair(24, COLOR_BLACK, COLOR_WHITE);   /* O-piece (white bg) */
+    init_pair(25, COLOR_BLACK, COLOR_MAGENTA);
+    init_pair(26, COLOR_BLACK, COLOR_GREEN);
+    init_pair(27, COLOR_BLACK, COLOR_RED);
+    init_pair(28, COLOR_BLACK, COLOR_BLUE);
+    init_pair(29, COLOR_BLACK, COLOR_WHITE);   /* L-piece (white bg) */
     init_pair(20, COLOR_YELLOW, COLOR_BLACK);  /* Pac-Man body (half-block fg) */
     init_pair(21, COLOR_RED, COLOR_BLACK);     /* Pac-Man stunned (half-block fg) */
     init_pair(22, COLOR_GREEN, COLOR_BLACK);   /* Pac-Man drill (half-block fg) */
 }
 
 static int piece_color(int t) { return (t>=1&&t<=7)?t:12; }
+static int item_color(int t) { return (t>=1&&t<=7)?(t+22):12; } /* black-text version */
 static double ticks_to_sec(int t) { return t/30.0; }
 
 /* ──────────── Ghost Row ──────────── */
@@ -861,13 +870,18 @@ static void draw_cell(int y, int x, int type, int is_ghost, int item_type) {
         int ct = type%10, si = type/10;
         if (item_type==0) item_type = si;
         if (ct>=1&&ct<=7) {
-            attron(COLOR_PAIR(piece_color(ct)));
-            if (item_type==1) mvprintw(y,x,"B ");
-            else if (item_type==2) mvprintw(y,x,"D ");
-            else if (item_type==3) mvprintw(y,x,"S ");
-            else if (item_type==4) mvprintw(y,x,"G ");
-            else mvprintw(y,x,"  ");
-            attroff(COLOR_PAIR(piece_color(ct)));
+            if (item_type>=1&&item_type<=4) {
+                attron(COLOR_PAIR(item_color(ct)));
+                if (item_type==1) mvprintw(y,x," B");
+                else if (item_type==2) mvprintw(y,x," D");
+                else if (item_type==3) mvprintw(y,x," S");
+                else if (item_type==4) mvprintw(y,x," G");
+                attroff(COLOR_PAIR(item_color(ct)));
+            } else {
+                attron(COLOR_PAIR(piece_color(ct)));
+                mvprintw(y,x,"  ");
+                attroff(COLOR_PAIR(piece_color(ct)));
+            }
         } else mvprintw(y,x,"  ");
     }
 }
