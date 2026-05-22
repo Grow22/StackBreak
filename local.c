@@ -1467,7 +1467,7 @@ static void handle_input(void) {
             } else if(item==2) {
                 g_state.ch.drill_timer=90;
             } else if(item==3) {
-                g_state.ch.shield_timer=30;
+                g_state.ch.shield_timer=105;
             } else if(item==4) {
                 if(g_state.num_bullets<MAX_BULLETS) {
                     g_state.bullets[g_state.num_bullets][0]=g_state.ch.x;
