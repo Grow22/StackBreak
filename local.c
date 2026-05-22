@@ -989,7 +989,7 @@ static void render(void) {
         int cy=sy+1+r, cx=sx+1+c*CELL_W;
         if (r==g_state.ch.drill_target_y && c==g_state.ch.drill_target_x &&
             g_state.ch.drill_crack_timer>0) {
-            int phase = ((g_state.ch.drill_crack_timer-1)*4)/15+1;
+            int phase = ((g_state.ch.drill_crack_timer-1)*4)/8+1;
             if(phase<1) phase=1;
             if(phase>4) phase=4;
             attron(COLOR_PAIR(15)|A_BOLD);
@@ -1380,7 +1380,7 @@ static void handle_input(void) {
             } else if(g_state.ch.drill_timer>0) {
                 if(g_state.ch.drill_target_x!=nx||g_state.ch.drill_target_y!=g_state.ch.y) {
                     g_state.ch.drill_target_x=nx; g_state.ch.drill_target_y=g_state.ch.y;
-                    g_state.ch.drill_crack_timer=15;
+                    g_state.ch.drill_crack_timer=8;
                 }
             }
         }
@@ -1394,7 +1394,7 @@ static void handle_input(void) {
             } else if(g_state.ch.drill_timer>0) {
                 if(g_state.ch.drill_target_x!=nx||g_state.ch.drill_target_y!=g_state.ch.y) {
                     g_state.ch.drill_target_x=nx; g_state.ch.drill_target_y=g_state.ch.y;
-                    g_state.ch.drill_crack_timer=15;
+                    g_state.ch.drill_crack_timer=8;
                 }
             }
         }
@@ -1406,7 +1406,16 @@ static void handle_input(void) {
     case KEY_DOWN: {
         g_state.ch.facing=0;
         int ny=g_state.ch.y+1;
-        if(ny<BOARD_H&&g_state.board[ny][g_state.ch.x]==0) g_state.ch.y=ny;
+        if(ny<BOARD_H) {
+            if(g_state.board[ny][g_state.ch.x]==0) {
+                g_state.ch.y=ny; g_state.ch.drill_crack_timer=0;
+            } else if(g_state.ch.drill_timer>0) {
+                if(g_state.ch.drill_target_x!=g_state.ch.x||g_state.ch.drill_target_y!=ny) {
+                    g_state.ch.drill_target_x=g_state.ch.x; g_state.ch.drill_target_y=ny;
+                    g_state.ch.drill_crack_timer=8;
+                }
+            }
+        }
         break; }
     case 'x': case 'X': {
         if(g_state.ch.carrying==0) {
