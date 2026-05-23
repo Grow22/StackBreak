@@ -1358,13 +1358,6 @@ static void render(void) {
 static void handle_input(void) {
     int ch = getch();
     if (ch == ERR) return;
-    if (ch == 'p' || ch == 'P') {
-	    g_is_paused = !g_is_paused;
-	    return;
-    }
-    if (g_is_paused) return;
-
-    if (g_state.game_over) return;
     switch (ch) {
 	    case 'q': case 'Q':
 		    g_running = 0;
@@ -1372,9 +1365,17 @@ static void handle_input(void) {
 	    case 'r': case 'R':
     		    init_game();
 		    drop_counter=0;
+		    g_is_paused=0;
 		    gravity_counter=0;
 		    break;
     }
+    if (g_state.game_over) return;
+    if (ch == 'p' || ch == 'P') {
+	    g_is_paused = !g_is_paused;
+	    return;
+    }
+    if (g_is_paused) return;
+
     int nc;
     /* Tetris (WASD+Space) */
     if (g_state.attacker_stun_timer==0 && g_state.piece_type!=0 &&
@@ -1599,6 +1600,7 @@ int main(void) {
 		attron(A_BOLD | COLOR_PAIR(31));
 		mvprintw(sy*2, sx, "        PAUSED       ");
 		mvprintw(sy*2+1, sx, " Press 'P' to Resume ");
+		mvprintw(sy*2+2, sx, " Retry='R', Quit='Q' ");
 		attroff(A_BOLD | COLOR_PAIR(31));
 		refresh();
 	}
