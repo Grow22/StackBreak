@@ -22,7 +22,7 @@ static int gravity_counter = 0;
 #define HIGHSCORE_FILE "highscore.dat"
 #define CELL_W 2
 #define HARD_DROP_COOLDOWN_TICKS 90
-#define SOFT_DROP_COOLDOWN_TICKS 6		// 5/23 수정 : 소프트드롭 쿨타임 0.2초
+#define SOFT_DROP_COOLDOWN_TICKS 4		// 소프트드롭 쿨타임 ~0.13초
 
 /* ──────────── Particle System ──────────── */
 #define MAX_PARTICLES 48
@@ -649,7 +649,7 @@ static void init_game(void) {
     g_state.ch.facing = 1;
     g_state.ch.drill_target_x = -1; g_state.ch.drill_target_y = -1;
     g_state.level = 1; g_state.game_started = 1;
-    g_state.attacker_hp = 3;	// 5/21 수정 : 체력 - 5->3
+    g_state.attacker_hp = 5;
     g_num_particles = 0;
     g_shake_timer = 0; g_shake_intensity = 0;
     g_lock_flash_timer = 0;
@@ -887,6 +887,52 @@ static void init_colors(void) {
 
     init_pair(30, COLOR_WHITE, 208);	/* Bomb prev Color */
     init_pair(31, COLOR_WHITE, 240);	/* Boss HardDrop-CoolTime */
+    init_pair(32, COLOR_RED, COLOR_BLACK);    /* Heart alive (red on black) */
+    init_pair(33, COLOR_BLACK, COLOR_BLACK);  /* Heart dead (dark) */
+}
+
+/* ──────────── Big Heart HP ──────────── */
+/*  Pixel heart (2px wide x 3 tall, each pixel = "  " 2-char = 4 chars per heart):
+ *  ##
+ *  ##
+ *  .#  (bottom tip, but we keep it 2-wide for simplicity)
+ *
+ *  Board width = 20 chars. 5 hearts x 4 chars = 20. Perfect fit.
+ */
+#define HEART_COUNT 5
+#define HEART_ROWS 3
+#define HEART_COLS 3
+
+/*  Pixel heart (5 wide × 4 tall, each pixel = "  " 2-char block):
+ *  .#.#.
+ *  #####
+ *  .###.
+ *  ..#..
+ */
+static const int HEART_PATTERN[3][3] = {
+    {1,0,1},
+    {1,1,1},
+    {0,1,0},
+};
+
+static void draw_big_heart(int y, int x, int alive) {
+    int cp = alive ? 5 : 33;
+    for (int r = 0; r < HEART_ROWS; r++) {
+        for (int c = 0; c < HEART_COLS; c++) {
+            if (HEART_PATTERN[r][c]) {
+                attron(COLOR_PAIR(cp));
+                mvprintw(y + r, x + c * 2, "  ");
+                attroff(COLOR_PAIR(cp));
+            }
+        }
+    }
+}
+
+static void draw_hp_hearts(int y, int x, int hp, int max_hp) {
+    int spacing = HEART_COLS * 2 + 4; /* heart(6) + gap(4) */
+    for (int i = 0; i < max_hp; i++) {
+        draw_big_heart(y, x + i * spacing, i < hp);
+    }
 }
 
 static int piece_color(int t) { return (t>=1&&t<=7)?t:12; }
@@ -1031,6 +1077,20 @@ static void render(void) {
 
     erase();
 
+    /* Attacker HP (top-left area) */
+    {
+        int hx = 3, hy = 3;
+        int hearts_total_w = 5 * (HEART_COLS * 2 + 4) - 4;
+        const char *title = "≪ ＡＴＴＡＣＫＥＲ ＨＰ ≫";
+        int title_disp_w = 24; /* ≪ ＡＴＴＡＣＫＥＲ ＨＰ ≫ = 11 fullwidth(22) + 2 spaces(2) = 24 */
+        int title_x = hx + (hearts_total_w - title_disp_w) / 2;
+        if (title_x < hx) title_x = hx;
+        attron(COLOR_PAIR(5)|A_BOLD);
+        mvprintw(hy - 1, title_x, "%s", title);
+        attroff(COLOR_PAIR(5)|A_BOLD);
+        draw_hp_hearts(hy + 1, hx, g_state.attacker_hp, 5);
+    }
+
     /* Border */
     attron(COLOR_PAIR(10));
     for (int r=0;r<bh;r++) { mvprintw(sy+r,sx,"|"); mvprintw(sy+r,sx+bw-1,"|"); }
@@ -1168,7 +1228,8 @@ static void render(void) {
     /* Space Invader boss (moves with piece_c) */
     if (g_state.attacker_hp > 0) {
         int inv_x = sx + 1 + (g_state.piece_c - 2) * CELL_W;
-        int inv_y = sy - INVADER_H - 1;	// 5/21 수정 : inv_y = sy - INVADER_H -> inv_y = sy - INVADER_H - 1
+        int inv_y = sy - INVADER_H - 1;
+
         static int inv_anim = 0;
         inv_anim++;
         draw_invader(inv_y, inv_x, inv_anim / 15,
@@ -1217,13 +1278,6 @@ static void render(void) {
 
     /* Attacker */
     mvprintw(py++,px,"--- Attacker ---");
-    mvprintw(py,px,"HP: ");
-    for(int i=0;i<3;i++) {	// 5/21 수정 : 5->3 체력 수정.
-        if(i<g_state.attacker_hp) { attron(COLOR_PAIR(5)|A_BOLD); printw("O"); attroff(COLOR_PAIR(5)|A_BOLD); }
-        else { attron(A_DIM); printw(" "); attroff(A_DIM); }
-        printw(" ");	// 5/21 수정 : <3 -> O, printw("..") 제거
-    }
-    py++;
     if (g_state.attacker_stun_timer>0) {
         attron(COLOR_PAIR(9)|A_BOLD);
         mvprintw(py++,px,"STUNNED! %.1fs",ticks_to_sec(g_state.attacker_stun_timer));
