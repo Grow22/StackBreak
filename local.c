@@ -72,6 +72,10 @@ static int g_bowser_hit_timer = 0;
 static int g_harddrop_cooldown_timer = 0;
 static int g_softdrop_cooldown_timer = 0;
 
+/* Next piece item info */
+static int g_next_item_idx = -1;
+static int g_next_item_type = 0;
+
 /* Forward declarations */
 static void apply_column_gravity(int col);
 static void give_item(int item_type);
@@ -569,14 +573,15 @@ static void spawn_piece(void) {
     g_state.piece_rot = 0;
     g_state.piece_r = 0;
     g_state.piece_c = BOARD_W / 2;
+    g_state.piece_item_idx = g_next_item_idx;
+    g_state.piece_item_type = g_next_item_type;
     g_state.next_type = random_piece();
     if (rand() % 100 < 50) {
-        g_state.piece_item_idx = pick_item_cell_balanced(
-            g_state.piece_type, g_state.piece_rot, g_state.piece_c);
-        g_state.piece_item_type = (rand() % 4) + 1;
+        g_next_item_idx = rand() % 4;
+        g_next_item_type = (rand() % 4) + 1;
     } else {
-        g_state.piece_item_idx = -1;
-        g_state.piece_item_type = 0;
+        g_next_item_idx = -1;
+        g_next_item_type = 0;
     }
     if (!piece_valid(g_state.piece_type, g_state.piece_rot,
                      g_state.piece_r, g_state.piece_c)) {
@@ -636,6 +641,10 @@ static void init_game(void) {
         g_state.piece_item_idx = rand()%4;
         g_state.piece_item_type = (rand()%4)+1;
     } else { g_state.piece_item_idx = -1; g_state.piece_item_type = 0; }
+    if (rand()%100 < 50) {
+        g_next_item_idx = rand()%4;
+        g_next_item_type = (rand()%4)+1;
+    } else { g_next_item_idx = -1; g_next_item_type = 0; }
     g_state.ch.x = BOARD_W/2; g_state.ch.y = BOARD_H-1;
     g_state.ch.facing = 1;
     g_state.ch.drill_target_x = -1; g_state.ch.drill_target_y = -1;
@@ -1188,12 +1197,21 @@ static void render(void) {
     } else py++;
 
     /* Next piece */
-    mvprintw(py++,px,"Next:");
+    {
+        const char *item_names[] = {"","Bomb","Drill","Shield","Gun"};
+        if (g_next_item_idx >= 0 && g_next_item_type >= 1 && g_next_item_type <= 4) {
+            mvprintw(py++,px,"Next: [%s @%d]", item_names[g_next_item_type], g_next_item_idx+1);
+        } else {
+            mvprintw(py++,px,"Next:");
+        }
+    }
     if (g_state.next_type>=1&&g_state.next_type<=7) {
         const Shape *s = &SHAPES[g_state.next_type][0];
-        for (int i=0;i<4;i++)
+        for (int i=0;i<4;i++) {
+            int item = (i==g_next_item_idx) ? g_next_item_type : 0;
             draw_cell(py+1+s->cells[i][0], px+2+s->cells[i][1]*CELL_W,
-                      g_state.next_type, 0, 0);
+                      g_state.next_type, 0, item);
+        }
     }
     py+=4;
 
