@@ -14,6 +14,7 @@
 /* ──────────── Global State ──────────── */
 static GameState g_state;
 static volatile sig_atomic_t g_running = 1;
+static int g_is_paused = 0;
 static int g_highscore = 0;
 static int drop_counter = 0;
 static int gravity_counter = 0;
@@ -944,8 +945,8 @@ static void draw_bomb_prev(int y, int x, int type) {
     } else {
         int it=type/10;
         attron(COLOR_PAIR(30)|A_BOLD);
-        if(it==1) mvprintw(y,x,"B "); else if(it==2) mvprintw(y,x,"D ");
-        else if(it==3) mvprintw(y,x,"S "); else if(it==4) mvprintw(y,x,"G ");
+        if(it==1) mvprintw(y,x," B"); else if(it==2) mvprintw(y,x," D");
+        else if(it==3) mvprintw(y,x," S"); else if(it==4) mvprintw(y,x," G");
         else mvprintw(y,x,"  ");
         attroff(COLOR_PAIR(19)|A_BOLD);
     }
@@ -1003,10 +1004,13 @@ static void draw_particles(int sy, int sx) {
 }
 
 /* ──────────── Render ──────────── */
+int my, mx;
+int bh, bw;
+int sy, sx;
 static void render(void) {
-    int my, mx; getmaxyx(stdscr,my,mx);
-    int bh = BOARD_H+2, bw = BOARD_W*CELL_W+2;  // 5/21 수정 : BOARD_H - 2 -> BOARD_H+2
-    int sy = (my-bh)/2, sx = (mx-bw)/2-8;	// 5/21 수정
+    getmaxyx(stdscr,my,mx);
+    bh = BOARD_H+2, bw = BOARD_W*CELL_W+2;  // 5/21 수정 : BOARD_H - 2 -> BOARD_H+2
+    sy = (my-bh)/2, sx = (mx-bw)/2-8;	// 5/21 수정
     if (sy<6) sy=6;
     if (sx<0) sx=0;
 
@@ -1354,25 +1358,39 @@ static void render(void) {
 static void handle_input(void) {
     int ch = getch();
     if (ch == ERR) return;
-    if (ch=='q'||ch=='Q') { g_running=0; return; }
-    if (ch=='r'||ch=='R') { init_game(); drop_counter=0; gravity_counter=0; return; }
-    if (g_state.game_over) return;
+    if (ch == 'p' || ch == 'P') {
+	    g_is_paused = !g_is_paused;
+	    return;
+    }
+    if (g_is_paused) return;
 
+    if (g_state.game_over) return;
+    switch (ch) {
+	    case 'q': case 'Q':
+		    g_running = 0;
+		    break;
+	    case 'r': case 'R':
+    		    init_game();
+		    drop_counter=0;
+		    gravity_counter=0;
+		    break;
+    }
+    int nc;
     /* Tetris (WASD+Space) */
     if (g_state.attacker_stun_timer==0 && g_state.piece_type!=0 &&
         g_state.attacker_spawn_delay==0) {
-        switch(ch) {
-        case 'a': case 'A': {
-            int nc=g_state.piece_c-1;
+	switch (ch) {
+        case 'a': case 'A':
+            nc=g_state.piece_c-1;
             if(piece_valid(g_state.piece_type,g_state.piece_rot,g_state.piece_r,nc))
                 g_state.piece_c=nc;
-            break; }
-        case 'd': case 'D': {
-            int nc=g_state.piece_c+1;
+            break;
+        case 'd': case 'D':
+            nc=g_state.piece_c+1;
             if(piece_valid(g_state.piece_type,g_state.piece_rot,g_state.piece_r,nc))
                 g_state.piece_c=nc;
-            break; }
-        case 'w': case 'W': {
+            break;
+        case 'w': case 'W':
             int nr=(g_state.piece_rot+1)%4;
             if(piece_valid(g_state.piece_type,nr,g_state.piece_r,g_state.piece_c))
                 g_state.piece_rot=nr;
@@ -1380,7 +1398,7 @@ static void handle_input(void) {
                 { g_state.piece_rot=nr; g_state.piece_c--; }
             else if(piece_valid(g_state.piece_type,nr,g_state.piece_r,g_state.piece_c+1))
                 { g_state.piece_rot=nr; g_state.piece_c++; }
-            break; }
+            break;
         case 's': case 'S':
 		if (g_softdrop_cooldown_timer > 0)
 			break;	
@@ -1560,13 +1578,31 @@ int main(void) {
         }
     }
 
+    getmaxyx(stdscr,my,mx);
+    bh = BOARD_H+2, bw = BOARD_W*CELL_W+2;
+    sy = (my-bh)/2, sx = (mx-bw)/2-8;
     struct timespec ts;
+
     while (g_running) {
         clock_gettime(CLOCK_MONOTONIC,&ts);
         long s_us = ts.tv_sec*1000000L + ts.tv_nsec/1000;
         handle_input();
-        game_tick();
-        render();
+
+	if (!g_is_paused) {
+		game_tick();
+		render();
+	}
+
+	render();
+
+	if (g_is_paused) {
+		attron(A_BOLD | COLOR_PAIR(31));
+		mvprintw(sy*2, sx, "        PAUSED       ");
+		mvprintw(sy*2+1, sx, " Press 'P' to Resume ");
+		attroff(A_BOLD | COLOR_PAIR(31));
+		refresh();
+	}
+
         clock_gettime(CLOCK_MONOTONIC,&ts);
         long e_us = ts.tv_sec*1000000L + ts.tv_nsec/1000;
         long el = e_us - s_us;
