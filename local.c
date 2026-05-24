@@ -1079,13 +1079,13 @@ static void render(void) {
 
     /* Attacker HP (top-left area) */
     {
-	const char *title1 = "HP";
-	const char *title2 = "DEAD";
+	const char *title1 = "<Atk. HP>";
+	const char *title2 = "<DEAD>";
         attron(COLOR_PAIR(33)|A_BOLD);
 	if (g_state.attacker_hp <= 0)
-		mvprintw(sy/2+3.75, sx-6.5, "%s", title2);
+		mvprintw(sy/2+3.75, sx-8, "%s", title2);
 	else
-		mvprintw(sy/2+3.75, sx-6.5, "%s", title1);
+		mvprintw(sy/2+3.75, sx-10, "%s", title1);
         attroff(COLOR_PAIR(33)|A_BOLD);
         draw_hp_hearts(sy/2+5, sx-8.5, g_state.attacker_hp, 5);
     }
