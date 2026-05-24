@@ -1064,8 +1064,8 @@ int bh, bw;
 int sy, sx;
 static void render(void) {
     getmaxyx(stdscr,my,mx);
-    bh = BOARD_H+2, bw = BOARD_W*CELL_W+2;  // 5/21 수정 : BOARD_H - 2 -> BOARD_H+2
-    sy = (my-bh)/2, sx = (mx-bw)/2-8;	// 5/21 수정
+    bh = BOARD_H+2, bw = BOARD_W*CELL_W+2;
+    sy = (my-bh)/2, sx = (mx-bw)/2-8;
     if (sy<6) sy=6;
     if (sx<0) sx=0;
 
@@ -1240,14 +1240,13 @@ static void render(void) {
     draw_particles(sy, sx);
 
     /* ── Side Panel ── */
-    int px = sx+bw+4, py = sy/3-1; // 5/21 수정: py = sy + 1 -> py = sy/3-1, px = sx+bw+2 -> px = sx+bw+4
+    int px = sx+bw+4, py = sy/3-1;
     attron(A_BOLD); mvprintw(py,px,"TETRIS VS"); attroff(A_BOLD);
-    py+=1;	// 5/21 수정: py+=2 -> py+=1
+    py+=1;
     mvprintw(py++,px,"Score: %d",g_state.score);
     mvprintw(py++,px,"Level: %d",g_state.level);
     mvprintw(py++,px,"Lines: %d",g_state.lines);
     mvprintw(py++,px,"High : %d",g_highscore);
-	// 5/21 수정: py++ 제거
 
     /* Combo */
     if (g_combo_timer > 0 && g_combo > 1) {
@@ -1630,11 +1629,9 @@ int main(void) {
     load_highscore();
     init_game();
 
-    // 5/21 수정 : 창 크기 자동 설정
     printf("\033[8;28;60t");
     fflush(stdout);
     usleep(50000);
-    //
 
     setlocale(LC_ALL,"");
     initscr(); cbreak(); noecho(); curs_set(0);
