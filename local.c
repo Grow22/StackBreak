@@ -887,8 +887,8 @@ static void init_colors(void) {
 
     init_pair(30, COLOR_WHITE, 208);	/* Bomb prev Color */
     init_pair(31, COLOR_WHITE, 240);	/* Boss HardDrop-CoolTime */
-    init_pair(32, COLOR_RED, COLOR_BLACK);    /* Heart alive (red on black) */
-    init_pair(33, COLOR_BLACK, COLOR_BLACK);  /* Heart dead (dark) */
+    init_pair(32, COLOR_WHITE, 201);    /* Heart alive (pink on black) */
+    init_pair(33, COLOR_MAGENTA, 0);  /* Heart dead (dark) */
 }
 
 /* ──────────── Big Heart HP ──────────── */
@@ -916,7 +916,7 @@ static const int HEART_PATTERN[3][3] = {
 };
 
 static void draw_big_heart(int y, int x, int alive) {
-    int cp = alive ? 5 : 33;
+    int cp = alive ? 32 : 33;
     for (int r = 0; r < HEART_ROWS; r++) {
         for (int c = 0; c < HEART_COLS; c++) {
             if (HEART_PATTERN[r][c]) {
@@ -929,9 +929,9 @@ static void draw_big_heart(int y, int x, int alive) {
 }
 
 static void draw_hp_hearts(int y, int x, int hp, int max_hp) {
-    int spacing = HEART_COLS * 2 + 4; /* heart(6) + gap(4) */
+    int spacing = HEART_ROWS * 1.5; /* heart(6) + gap(4) */
     for (int i = 0; i < max_hp; i++) {
-        draw_big_heart(y, x + i * spacing, i < hp);
+        draw_big_heart(y+i*spacing, x, i < hp);
     }
 }
 
@@ -1079,16 +1079,15 @@ static void render(void) {
 
     /* Attacker HP (top-left area) */
     {
-        int hx = 3, hy = 3;
-        int hearts_total_w = 5 * (HEART_COLS * 2 + 4) - 4;
-        const char *title = "≪ ＡＴＴＡＣＫＥＲ ＨＰ ≫";
-        int title_disp_w = 24; /* ≪ ＡＴＴＡＣＫＥＲ ＨＰ ≫ = 11 fullwidth(22) + 2 spaces(2) = 24 */
-        int title_x = hx + (hearts_total_w - title_disp_w) / 2;
-        if (title_x < hx) title_x = hx;
-        attron(COLOR_PAIR(5)|A_BOLD);
-        mvprintw(hy - 1, title_x, "%s", title);
-        attroff(COLOR_PAIR(5)|A_BOLD);
-        draw_hp_hearts(hy + 1, hx, g_state.attacker_hp, 5);
+	const char *title1 = "HP";
+	const char *title2 = "DEAD";
+        attron(COLOR_PAIR(33)|A_BOLD);
+	if (g_state.attacker_hp <= 0)
+		mvprintw(sy/2+3.75, sx-6.5, "%s", title2);
+	else
+		mvprintw(sy/2+3.75, sx-6.5, "%s", title1);
+        attroff(COLOR_PAIR(33)|A_BOLD);
+        draw_hp_hearts(sy/2+5, sx-8.5, g_state.attacker_hp, 5);
     }
 
     /* Border */
@@ -1261,7 +1260,7 @@ static void render(void) {
     {
         const char *item_names[] = {"","Bomb","Drill","Shield","Gun"};
         if (g_next_item_idx >= 0 && g_next_item_type >= 1 && g_next_item_type <= 4) {
-            mvprintw(py++,px,"Next: [%s @%d]", item_names[g_next_item_type], g_next_item_idx+1);
+            mvprintw(py++,px,"Next: [%s]", item_names[g_next_item_type]);
         } else {
             mvprintw(py++,px,"Next:");
         }
