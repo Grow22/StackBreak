@@ -600,7 +600,7 @@ static void spawn_piece(void) {
     g_state.piece_item_type = g_next_item_type;
     g_state.next_type = random_piece();
     if (rand() % 100 < 50) {
-        g_next_item_idx = rand() % 4;
+        g_next_item_idx = pick_item_cell_balanced(g_state.next_type, 0, g_state.piece_c);
         g_next_item_type = (rand() % 4) + 1;
     } else {
         g_next_item_idx = -1;

@@ -156,6 +156,8 @@ typedef struct {
 
     /* scoring */
     int score;
+    int defscore;
+    int atkscore;
     int level;
     int lines;
 
