@@ -1553,7 +1553,7 @@ static void handle_input(void) {
             }
         }
         break; }
-    case 'x': case 'X': {
+    case '.': {
         if(g_state.ch.carrying==0) {
             int dx=(g_state.ch.facing==0)?0:g_state.ch.facing;
             int dy=(g_state.ch.facing==0)?1:0;
@@ -1584,7 +1584,7 @@ static void handle_input(void) {
             }
         }
         break; }
-    case 'c': case 'C':
+    case '/':
         if(g_state.ch.inv_count>0) {
             int item=g_state.ch.inventory[0];
             for(int i=0;i<2;i++) g_state.ch.inventory[i]=g_state.ch.inventory[i+1];
