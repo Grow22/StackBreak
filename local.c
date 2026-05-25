@@ -15,6 +15,7 @@
 static GameState g_state;
 static volatile sig_atomic_t g_running = 1;
 static int g_is_paused = 0;
+static int g_score_animated = 0;	// Whether ended showing final score animation
 static int g_highscore = 0;
 static int drop_counter = 0;
 static int gravity_counter = 0;
@@ -721,7 +722,7 @@ static void game_tick(void) {
                 if (g_state.board[ty][tx] >= 10)
                     give_item(g_state.board[ty][tx] / 10);
                 g_state.board[ty][tx] = 0;
-		g_state.defscore += 50 * g_state.level;
+		g_state.defscore += 10 * g_state.level;
                 apply_column_gravity(tx);
                 do_score_and_combo(clear_lines());
                 add_effect(EFFECT_DRILL, tx, ty, 6, 0);
@@ -1261,7 +1262,6 @@ static void render(void) {
     int px = sx+bw+4, py = sy/3-1;
     attron(A_BOLD); mvprintw(py,px,"TETRIS VS"); attroff(A_BOLD);
     py+=1;
-//    mvprintw(py++,px,"Score: %d",g_state.score);
     mvprintw(py++,px,"Level: %d",g_state.level);
     mvprintw(py++,px,"Lines: %d",g_state.lines);
     mvprintw(py++,px,"High : %d",g_highscore);
@@ -1361,38 +1361,70 @@ static void render(void) {
         mvprintw(cy-2,cx,"                       ");
         mvprintw(cy-1,cx,"   ==================  ");
         mvprintw(cy,  cx,"     GAME  OVER !      ");
-	int is_multiscore = 0;
-	char loser;
-        if (g_state.attacker_hp<=0) {
-            mvprintw(cy+1,cx,"    DEFENDER WINS!     ");
-	    loser = 'A';
-	    g_state.score = g_state.defscore*2;
-	    if (g_state.score < g_state.atkscore)
-		    is_multiscore = 1;
-	}
-        else {
-            mvprintw(cy+1,cx,"    ATTACKER WINS!     ");
-	    loser = 'D';
-	    g_state.score = g_state.atkscore*2;
-	    if (g_state.score < g_state.defscore)
-		    is_multiscore = 1;
-	}
-	mvprintw(cy+2,cx,"    Score: %-8d    ",g_state.score);
-	while (is_multiscore) {
-		g_state.score *= 2;
-		switch (loser) {
-			case 'A':
-				if (g_state.score >= g_state.atkscore)
-					is_multiscore = 0;
-				break;
-			case 'D':
-				if (g_state.score >= g_state.defscore)
-					is_multiscore = 0;
-				break;
+
+	if (!g_score_animated) {
+		int is_multiscore = 0;
+		char loser;
+	        if (g_state.attacker_hp<=0) {
+	            mvprintw(cy+1,cx,"    DEFENDER WINS!     ");
+		    loser = 'A';
+		    g_state.score = g_state.defscore;
+		    if (g_state.score < g_state.atkscore)
+			    is_multiscore = 1;
 		}
-		sleep(0.5);
+	        else {
+	            mvprintw(cy+1,cx,"    ATTACKER WINS!     ");
+		    loser = 'D';
+		    g_state.score = g_state.atkscore;
+		    if (g_state.score < g_state.defscore)
+			    is_multiscore = 1;
+		}
+		mvprintw(cy+2,cx,"    Score: %-8d    ",g_state.score);
 		refresh();
+		usleep(1000000);
+		g_state.score *= 2;
+		while (is_multiscore) {
+			mvprintw(cy+2,cx,"    Score: %-8d    ",g_state.score);
+			refresh();
+			usleep(500000);
+			g_state.score *= 2;
+			switch (loser) {
+				case 'A':
+					if (g_state.score >= g_state.atkscore)
+						is_multiscore = 0;
+					break;
+				case 'D':
+					if (g_state.score >= g_state.defscore)
+						is_multiscore = 0;
+					break;
+			}
+		}
+		
+		mvprintw(cy+2,cx,"    Score: %-8d    ",g_state.score);
+		refresh();
+		usleep(500000);
+	
+		for (int blink = 0; blink < 3; blink++) {
+			mvprintw(cy+2,cx,"               ");
+			refresh();
+			usleep(100000);
+		
+			mvprintw(cy+2,cx,"    Score: %-8d    ",g_state.score);
+			refresh();
+			usleep(250000);
+		}
+
+		g_score_animated = 1;
 	}
+	else {
+		if (g_state.attacker_hp <= 0) {	
+	            mvprintw(cy+1,cx,"    DEFENDER WINS!     ");
+		} else {
+	            mvprintw(cy+1,cx,"    ATTACKER WINS!     ");
+		}
+	}
+
+	mvprintw(cy+2,cx,"    Score: %-8d    ",g_state.score);
         mvprintw(cy+3,cx,"   R=Restart  Q=Quit   ");
         mvprintw(cy+4,cx,"   ==================  ");
         mvprintw(cy+5,cx,"                       ");
@@ -1650,7 +1682,7 @@ static void handle_input(void) {
                     }
                 for(int c=bx;c<bx+4;c++) if(c>=0&&c<BOARD_W) apply_column_gravity(c);
 		if (destroyed_count > 0) {
-			g_state.defscore += destroyed_count * 50 * (g_state.level);
+			g_state.defscore += destroyed_count * 10 * (g_state.level);
 		}
                 do_score_and_combo(clear_lines());
                 add_effect(EFFECT_BOMB,g_state.ch.x,g_state.ch.y,10,4);
