@@ -372,6 +372,39 @@ static int piece_cells(int type, int rot, int pr, int pc, int out[4][2]) {
     return 1;
 }
 
+
+/* ──────────── Scoring ──────────── */
+static void add_score(int lc) {	// add defender score
+    static const int pts[] = {0, 100, 300, 500, 800};
+    if (lc > 0 && lc <= 4) g_state.defscore += pts[lc] * g_state.level;
+    g_state.lines += lc;
+    g_state.level = 1 + g_state.lines / 10;
+}
+static void subtract_atk_score() {
+	if (g_state.atkscore < 100 * g_state.level)  g_state.atkscore = 0;
+	else g_state.atkscore -= 100 * g_state.level;
+}
+static void add_atk_score() {
+	g_state.atkscore += 200 * g_state.level;
+}
+
+
+static void do_score_and_combo(int lc) {
+    if (lc > 0) {
+        g_combo++;
+        g_combo_timer = 60;
+        if (g_combo > 1)
+            g_state.defscore += g_combo * 50 * g_state.level;
+        static const int pts[] = {0,100,300,500,800};
+        g_popup_score = pts[lc] * g_state.level;
+        if (g_combo > 1) g_popup_score += g_combo * 50 * g_state.level;
+        g_popup_timer = 24;
+    } else {
+        g_combo = 0;
+    }
+    add_score(lc);
+}
+
 static int piece_valid(int type, int rot, int pr, int pc) {
     int cells[4][2];
     piece_cells(type, rot, pr, pc, cells);
@@ -405,7 +438,9 @@ static int harddrop_sweep_hits_character(int start_r, int end_r) {
             g_state.attacker_stun_timer = 45;
             add_effect(EFFECT_SHIELD, g_state.ch.x, g_state.ch.y, 10, 0);
             spawn_shield_burst(g_state.ch.x, g_state.ch.y);
+	    subtract_atk_score();
         } else {
+	    add_atk_score();
             stun_character();
             spawn_stun_stars(g_state.ch.x, g_state.ch.y);
         }
@@ -424,8 +459,10 @@ static void lock_piece(void) {
             g_state.attacker_stun_timer = 45;
             add_effect(EFFECT_SHIELD, g_state.ch.x, g_state.ch.y, 10, 0);
             spawn_shield_burst(g_state.ch.x, g_state.ch.y);
+	    subtract_atk_score();
         } else if (g_state.ch.stun_invuln_timer == 0) {
             stun_character();
+	    add_atk_score();
             spawn_stun_stars(g_state.ch.x, g_state.ch.y);
         }
         push_character_from_piece(cells);
@@ -447,9 +484,11 @@ static void lock_piece(void) {
         g_state.board[g_state.ch.y][g_state.ch.x] != 0) {
         if (g_state.ch.shield_timer > 0) {
             g_state.attacker_stun_timer = 45;
-            add_effect(EFFECT_SHIELD, g_state.ch.x, g_state.ch.y, 10, 0);
+            add_effect(EFFECT_SHIELD, g_state.ch.x, g_state.ch.y, 10, 0); 
+	    subtract_atk_score();
             spawn_shield_burst(g_state.ch.x, g_state.ch.y);
         } else if (g_state.ch.stun_invuln_timer == 0) {
+	    add_atk_score();
             stun_character();
             spawn_stun_stars(g_state.ch.x, g_state.ch.y);
         }
@@ -482,29 +521,6 @@ static int clear_lines(void) {
     return cleared;
 }
 
-/* ──────────── Scoring ──────────── */
-static void add_score(int lc) {
-    static const int pts[] = {0, 100, 300, 500, 800};
-    if (lc > 0 && lc <= 4) g_state.score += pts[lc] * g_state.level;
-    g_state.lines += lc;
-    g_state.level = 1 + g_state.lines / 10;
-}
-
-static void do_score_and_combo(int lc) {
-    if (lc > 0) {
-        g_combo++;
-        g_combo_timer = 60;
-        if (g_combo > 1)
-            g_state.score += g_combo * 50 * g_state.level;
-        static const int pts[] = {0,100,300,500,800};
-        g_popup_score = pts[lc] * g_state.level;
-        if (g_combo > 1) g_popup_score += g_combo * 50 * g_state.level;
-        g_popup_timer = 24;
-    } else {
-        g_combo = 0;
-    }
-    add_score(lc);
-}
 
 /* ──────────── Spawn Piece ──────────── */
 /* Count existing items per board third (left 0-3, mid 4-6, right 7-9) */
@@ -705,6 +721,7 @@ static void game_tick(void) {
                 if (g_state.board[ty][tx] >= 10)
                     give_item(g_state.board[ty][tx] / 10);
                 g_state.board[ty][tx] = 0;
+		g_state.defscore += 50 * g_state.level;
                 apply_column_gravity(tx);
                 do_score_and_combo(clear_lines());
                 add_effect(EFFECT_DRILL, tx, ty, 6, 0);
@@ -800,6 +817,7 @@ static void game_tick(void) {
                 if (boss_hit) {
                     add_effect(EFFECT_GUN_HIT, bx, -1, 10, 0);
                     g_state.attacker_hp--;
+		    g_state.defscore += 100;
                     spawn_boss_hit(bx);
                     g_bowser_hit_timer = 6;
                     if (g_state.attacker_hp <= 0) {
@@ -1243,10 +1261,11 @@ static void render(void) {
     int px = sx+bw+4, py = sy/3-1;
     attron(A_BOLD); mvprintw(py,px,"TETRIS VS"); attroff(A_BOLD);
     py+=1;
-    mvprintw(py++,px,"Score: %d",g_state.score);
+//    mvprintw(py++,px,"Score: %d",g_state.score);
     mvprintw(py++,px,"Level: %d",g_state.level);
     mvprintw(py++,px,"Lines: %d",g_state.lines);
     mvprintw(py++,px,"High : %d",g_highscore);
+    py++;
 
     /* Combo */
     if (g_combo_timer > 0 && g_combo > 1) {
@@ -1290,6 +1309,7 @@ static void render(void) {
         mvprintw(py++,px,"Harddrop: READY");
         attroff(COLOR_PAIR(4)|A_BOLD);
     }
+    mvprintw(py++, px, "Score: %d", g_state.atkscore);
     py++;
 
     /* Defender */
@@ -1317,6 +1337,7 @@ static void render(void) {
         attroff(COLOR_PAIR(15)|A_BOLD);
     }
     mvprintw(py++,px,"Carry: %s",g_state.ch.carrying?"Block":"None");
+    mvprintw(py++,px,"Score: %d",g_state.defscore);
     py++;
 
     attron(A_BOLD); mvprintw(py++,px,"--- Controls ---"); attroff(A_BOLD);
@@ -1340,11 +1361,38 @@ static void render(void) {
         mvprintw(cy-2,cx,"                       ");
         mvprintw(cy-1,cx,"   ==================  ");
         mvprintw(cy,  cx,"     GAME  OVER !      ");
-        if (g_state.attacker_hp<=0)
+	int is_multiscore = 0;
+	char loser;
+        if (g_state.attacker_hp<=0) {
             mvprintw(cy+1,cx,"    DEFENDER WINS!     ");
-        else
+	    loser = 'A';
+	    g_state.score = g_state.defscore*2;
+	    if (g_state.score < g_state.atkscore)
+		    is_multiscore = 1;
+	}
+        else {
             mvprintw(cy+1,cx,"    ATTACKER WINS!     ");
-        mvprintw(cy+2,cx,"    Score: %-8d    ",g_state.score);
+	    loser = 'D';
+	    g_state.score = g_state.atkscore*2;
+	    if (g_state.score < g_state.defscore)
+		    is_multiscore = 1;
+	}
+	mvprintw(cy+2,cx,"    Score: %-8d    ",g_state.score);
+	while (is_multiscore) {
+		g_state.score *= 2;
+		switch (loser) {
+			case 'A':
+				if (g_state.score >= g_state.atkscore)
+					is_multiscore = 0;
+				break;
+			case 'D':
+				if (g_state.score >= g_state.defscore)
+					is_multiscore = 0;
+				break;
+		}
+		sleep(0.5);
+		refresh();
+	}
         mvprintw(cy+3,cx,"   R=Restart  Q=Quit   ");
         mvprintw(cy+4,cx,"   ==================  ");
         mvprintw(cy+5,cx,"                       ");
@@ -1591,12 +1639,19 @@ static void handle_input(void) {
             g_state.ch.inv_count--;
             if(item==1) {
                 int bx=g_state.ch.x-2, by=g_state.ch.y-2;
+		int destroyed_count = 0;
                 for(int r=by;r<by+4;r++) for(int c=bx;c<bx+4;c++)
                     if(r>=0&&r<BOARD_H&&c>=0&&c<BOARD_W) {
-                        if(g_state.board[r][c]>=10) give_item(g_state.board[r][c]/10);
-                        g_state.board[r][c]=0;
+			if (g_state.board[r][c] != 0) {
+    			    if(g_state.board[r][c]>=10) give_item(g_state.board[r][c]/10);
+                            g_state.board[r][c]=0;
+			    destroyed_count++;
+			}
                     }
                 for(int c=bx;c<bx+4;c++) if(c>=0&&c<BOARD_W) apply_column_gravity(c);
+		if (destroyed_count > 0) {
+			g_state.defscore += destroyed_count * 50 * (g_state.level);
+		}
                 do_score_and_combo(clear_lines());
                 add_effect(EFFECT_BOMB,g_state.ch.x,g_state.ch.y,10,4);
                 spawn_bomb_explosion(g_state.ch.x,g_state.ch.y);
