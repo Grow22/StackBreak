@@ -383,10 +383,16 @@ static void add_score(int lc) {	// add defender score
 }
 static void subtract_atk_score() {
 	if (g_state.atkscore < 100 * g_state.level)  g_state.atkscore = 0;
-	else g_state.atkscore -= 100 * g_state.level;
+	else {
+		g_state.atkscore -= 100 * g_state.level;
+		g_popup_timer = 30;
+		g_popup_score = (-100) * g_state.level;
+	}
 }
 static void add_atk_score() {
 	g_state.atkscore += 200 * g_state.level;
+	g_popup_timer = 30;
+	g_popup_score = 200 * g_state.level;
 }
 
 
@@ -722,6 +728,8 @@ static void game_tick(void) {
                 if (g_state.board[ty][tx] >= 10)
                     give_item(g_state.board[ty][tx] / 10);
                 g_state.board[ty][tx] = 0;
+		g_popup_timer = 30;
+		g_popup_score = 10 * g_state.level;
 		g_state.defscore += 10 * g_state.level;
                 apply_column_gravity(tx);
                 do_score_and_combo(clear_lines());
@@ -818,6 +826,8 @@ static void game_tick(void) {
                 if (boss_hit) {
                     add_effect(EFFECT_GUN_HIT, bx, -1, 10, 0);
                     g_state.attacker_hp--;
+		    g_popup_timer = 60;
+		    g_popup_score = 100;
 		    g_state.defscore += 100;
                     spawn_boss_hit(bx);
                     g_bowser_hit_timer = 6;
@@ -1349,9 +1359,16 @@ static void render(void) {
     if (g_popup_timer > 0) {
         int pop_y = sy + BOARD_H/2 - (24-g_popup_timer)/3;
         int pop_x = sx + bw/2 - 3;
-        attron(COLOR_PAIR(2)|A_BOLD);
-        mvprintw(pop_y, pop_x, "+%d", g_popup_score);
-        attroff(COLOR_PAIR(2)|A_BOLD);
+	if (g_popup_score > 0) {
+        	attron(COLOR_PAIR(2)|A_BOLD);
+	        mvprintw(pop_y, pop_x, "+%d", g_popup_score);
+        	attroff(COLOR_PAIR(2)|A_BOLD);
+	}
+	else {
+        	attron(COLOR_PAIR(5)|A_BOLD);
+	        mvprintw(pop_y, pop_x, "-%d", (-1)*g_popup_score);
+	        attroff(COLOR_PAIR(5)|A_BOLD);
+	}
     }
 
     /* Game Over */
@@ -1413,6 +1430,9 @@ static void render(void) {
 			refresh();
 			usleep(250000);
 		}
+
+		g_shake_timer = 0;
+		g_shake_intensity = 0;
 
 		g_score_animated = 1;
 	}
@@ -1683,6 +1703,8 @@ static void handle_input(void) {
                 for(int c=bx;c<bx+4;c++) if(c>=0&&c<BOARD_W) apply_column_gravity(c);
 		if (destroyed_count > 0) {
 			g_state.defscore += destroyed_count * 10 * (g_state.level);
+			g_popup_timer = 30;
+			g_popup_score = destroyed_count * 10 * (g_state.level);
 		}
                 do_score_and_combo(clear_lines());
                 add_effect(EFFECT_BOMB,g_state.ch.x,g_state.ch.y,10,4);
