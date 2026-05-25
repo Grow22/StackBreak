@@ -386,8 +386,8 @@ static void subtract_atk_score() {
 	else {
 		g_state.atkscore -= 100 * g_state.level;
 		g_popup_timer = 30;
-		g_popup_score = (-100) * g_state.level;
 	}
+	g_popup_score = (-100) * g_state.level;
 }
 static void add_atk_score() {
 	g_state.atkscore += 200 * g_state.level;
