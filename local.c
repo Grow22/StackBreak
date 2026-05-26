@@ -1390,6 +1390,7 @@ static void render(void) {
 			    is_multiscore = 1;
 		}
 	        else {
+		    g_state.atkscore = (g_state.atkscore == 0) ? 10 : g_state.atkscore;
 	            mvprintw(cy+1,cx,"    ATTACKER WINS!     ");
 		    loser = 'D';
 		    g_state.score = g_state.atkscore;
