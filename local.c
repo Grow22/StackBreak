@@ -399,15 +399,13 @@ static void add_atk_score() {
 static void do_score_and_combo(int lc) {
     if (lc > 0) {
         g_combo++;
-        g_combo_timer = 60;
+        g_combo_timer = 150;
         if (g_combo > 1)
             g_state.defscore += g_combo * 50 * g_state.level;
         static const int pts[] = {0,100,300,500,800};
         g_popup_score = pts[lc] * g_state.level;
         if (g_combo > 1) g_popup_score += g_combo * 50 * g_state.level;
         g_popup_timer = 24;
-    } else {
-        g_combo = 0;
     }
     add_score(lc);
 }
@@ -659,6 +657,10 @@ static void init_game(void) {
     g_state.piece_rot = 0;
     g_state.piece_r = 0;
     g_state.piece_c = BOARD_W / 2;
+    
+    g_state.score = 0;
+    g_state.defscore = 0;
+    g_state.atkscore = 0;
     g_state.next_type = random_piece();
     if (rand()%100 < 50) {
         g_state.piece_item_idx = rand()%4;
@@ -714,7 +716,12 @@ static void game_tick(void) {
     if (g_state.ch.shield_timer > 0) g_state.ch.shield_timer--;
     if (g_state.ch.drill_timer > 0) g_state.ch.drill_timer--;
     if (g_lock_flash_timer > 0) g_lock_flash_timer--;
-    if (g_combo_timer > 0) g_combo_timer--;
+    if (g_combo_timer > 0) {
+	    g_combo_timer--;
+	    if (g_combo_timer == 0) {
+		    g_combo = 0;
+	    }
+    }
     if (g_popup_timer > 0) g_popup_timer--;
     if (g_bomb_flash_timer > 0) g_bomb_flash_timer--;
     if (g_bowser_hit_timer > 0) g_bowser_hit_timer--;
