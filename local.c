@@ -828,8 +828,8 @@ static void game_tick(void) {
             if (by < 0) {
                 /* Only hit if bullet aligns with boss (piece_c ~ piece_c+1) */
                 int boss_hit = (g_state.attacker_hp > 0 &&
-                                bx >= g_state.piece_c &&
-                                bx <= g_state.piece_c + 1);
+                                bx >= g_state.piece_c - 1 &&
+                                bx <= g_state.piece_c + 2);
                 if (boss_hit) {
                     add_effect(EFFECT_GUN_HIT, bx, -1, 10, 0);
                     g_state.attacker_hp--;
@@ -844,14 +844,6 @@ static void game_tick(void) {
                         save_highscore();
                     }
                 }
-                removed = 1;
-            } else if (by>=0 && by<BOARD_H && g_state.board[by][bx]!=0) {
-                if (g_state.board[by][bx] >= 10)
-                    give_item(g_state.board[by][bx] / 10);
-                g_state.board[by][bx] = 0;
-                apply_column_gravity(bx);
-                do_score_and_combo(clear_lines());
-                spawn_particle(bx, by, 0, 0, 4, "##", 2, 1);
                 removed = 1;
             }
         }
@@ -1337,11 +1329,19 @@ static void render(void) {
         mvprintw(py++,px,"INVULN! %.1fs",ticks_to_sec(g_state.ch.stun_invuln_timer));
     else mvprintw(py++,px,"Status: OK");
 
-    const char* itm[]={"","Bomb","Drill","Shld","Gun"};
-    mvprintw(py++,px,"[%-5s][%-5s][%-5s]",
-        g_state.ch.inv_count>0?itm[g_state.ch.inventory[0]]:"Empty",
-        g_state.ch.inv_count>1?itm[g_state.ch.inventory[1]]:"Empty",
-        g_state.ch.inv_count>2?itm[g_state.ch.inventory[2]]:"Empty");
+    {
+        const char* itm_label[]={"","💣 Bomb","⛏️  Drill","🛡  Shield","🔫 Gun"};
+        const char* itm_empty = "  Empty";
+        int sw = 11;
+        for (int si=0;si<3;si++) {
+            int inv = (si<g_state.ch.inv_count) ? g_state.ch.inventory[si] : 0;
+            const char* label = inv>0 ? itm_label[inv] : itm_empty;
+            mvprintw(py, px+si*sw, "[");
+            mvprintw(py, px+si*sw+1, "%s", label);
+            mvprintw(py, px+(si+1)*sw-1, "]");
+        }
+        py++;
+    }
 
     if (g_state.ch.shield_timer>0) {
         attron(COLOR_PAIR(16)|A_BOLD);
