@@ -756,12 +756,32 @@ static void render(void) {
     mvprintw(panel_y++, panel_x, "Score: %d", st.defscore);
     panel_y++;
 
+    if (g_role == 0) {
+        attron(COLOR_PAIR(COLOR_PIECE_I) | A_BOLD);
+        mvprintw(panel_y++, panel_x, "You: TETRIS");
+        attroff(COLOR_PAIR(COLOR_PIECE_I) | A_BOLD);
+    } else {
+        attron(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
+        mvprintw(panel_y++, panel_x, "You: CHARACTER");
+        attroff(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
+    }
+    panel_y++;
+
     attron(A_BOLD);
     mvprintw(panel_y++, panel_x, "--- Controls ---");
     attroff(A_BOLD);
-    mvprintw(panel_y++, panel_x, "WASD+Space: Tetris");
-    mvprintw(panel_y++, panel_x, "Arrows+ZXC: Char");
-    mvprintw(panel_y++, panel_x, "R=Restart  Q=Quit");
+    if (g_role == 0) {
+        mvprintw(panel_y++, panel_x, "A/D : Move L/R");
+        mvprintw(panel_y++, panel_x, "W   : Rotate");
+        mvprintw(panel_y++, panel_x, "S   : Soft Drop");
+        mvprintw(panel_y++, panel_x, "Space: Hard Drop");
+    } else {
+        mvprintw(panel_y++, panel_x, "Arrows: Move");
+        mvprintw(panel_y++, panel_x, "Z   : Jump");
+        mvprintw(panel_y++, panel_x, "X   : Pick/Place");
+        mvprintw(panel_y++, panel_x, "C   : Use Item");
+    }
+    mvprintw(panel_y++, panel_x, "P=Pause R=Restart Q=Quit");
 
     if (st.popup_timer > 0) {
         int pop_y = start_y + BOARD_H / 2 - (24 - st.popup_timer) / 3;
