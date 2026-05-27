@@ -26,6 +26,7 @@
 #define MAX_CLIENTS  2
 #define MAX_BULLETS  3
 #define MAX_EFFECTS  12
+#define MAX_PARTICLES 48
 
 #define EFFECT_NONE      0
 #define EFFECT_BOMB      1
@@ -140,6 +141,15 @@ typedef struct {
     int param;          /* effect-specific size/state */
 } VisualEffect;
 
+typedef struct {
+    float x, y;
+    float vx, vy;
+    int life, max_life;
+    char ch[4];
+    int color;
+    int bold;
+} VisualParticle;
+
 /* ──────────── Game State ──────────── */
 typedef struct {
     int board[BOARD_H][BOARD_W];   /* 0=empty, 1-7=block color */
@@ -188,6 +198,8 @@ typedef struct {
     int bullets[MAX_BULLETS][2];  /* [i][0]=col, [i][1]=row */
     int num_effects;
     VisualEffect effects[MAX_EFFECTS];
+    int num_particles;
+    VisualParticle particles[MAX_PARTICLES];
 } GameState;
 
 /* ──────────── Protocol ──────────── */
