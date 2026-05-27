@@ -39,12 +39,13 @@ static volatile sig_atomic_t g_running = 1;
 #define COLOR_GUN_FX       17
 #define COLOR_HIT_FX       18
 #define COLOR_BOMB_BLOCK_PREVIEW 19
+#define COLOR_COMBO        20
 
 static void init_colors(void) {
     start_color();
     /* use_default_colors() removed to prevent WSL blank screen bugs */
     init_pair(COLOR_PIECE_I,   COLOR_WHITE,   COLOR_CYAN);
-    init_pair(COLOR_PIECE_O,   COLOR_WHITE,   COLOR_YELLOW);
+    init_pair(COLOR_PIECE_O,   COLOR_BLACK,   COLOR_WHITE);
     init_pair(COLOR_PIECE_T,   COLOR_WHITE,   COLOR_MAGENTA);
     init_pair(COLOR_PIECE_S,   COLOR_WHITE,   COLOR_GREEN);
     init_pair(COLOR_PIECE_Z,   COLOR_WHITE,   COLOR_RED);
@@ -62,10 +63,36 @@ static void init_colors(void) {
     init_pair(COLOR_GUN_FX,       COLOR_BLACK, COLOR_GREEN);
     init_pair(COLOR_HIT_FX,       COLOR_WHITE, COLOR_MAGENTA);
     init_pair(COLOR_BOMB_BLOCK_PREVIEW, COLOR_BLACK, COLOR_YELLOW);
+    init_pair(COLOR_COMBO,     COLOR_YELLOW,  COLOR_BLACK);
+    init_pair(21,              COLOR_RED,     COLOR_BLACK);
+    init_pair(22,              COLOR_GREEN,   COLOR_BLACK);
+    init_pair(23,              COLOR_BLACK,   COLOR_CYAN);
+    init_pair(24,              COLOR_BLACK,   COLOR_WHITE);
+    init_pair(25,              COLOR_BLACK,   COLOR_MAGENTA);
+    init_pair(26,              COLOR_BLACK,   COLOR_GREEN);
+    init_pair(27,              COLOR_BLACK,   COLOR_RED);
+    init_pair(28,              COLOR_BLACK,   COLOR_BLUE);
+    init_pair(29,              COLOR_BLACK,   COLOR_WHITE);
+    if (COLORS > 240) {
+        init_pair(30,          COLOR_WHITE,   208);
+        init_pair(31,          COLOR_WHITE,   240);
+        init_pair(32,          COLOR_WHITE,   201);
+        init_pair(33,          COLOR_MAGENTA, COLOR_BLACK);
+    } else {
+        init_pair(30,          COLOR_WHITE,   COLOR_RED);
+        init_pair(31,          COLOR_WHITE,   COLOR_BLACK);
+        init_pair(32,          COLOR_WHITE,   COLOR_MAGENTA);
+        init_pair(33,          COLOR_MAGENTA, COLOR_BLACK);
+    }
 }
 
 static int piece_color(int type) {
     if (type >= 1 && type <= 7) return type;
+    return COLOR_BG;
+}
+
+static int item_color(int type) {
+    if (type >= 1 && type <= 7) return type + 22;
     return COLOR_BG;
 }
 
@@ -139,15 +166,20 @@ static void draw_cell(WINDOW *win, int y, int x, int type, int is_ghost, int ite
         int color_type = type % 10;
         int stored_item = type / 10;
         if (item_type == 0) item_type = stored_item;
-        
+
         if (color_type >= 1 && color_type <= 7) {
-            wattron(win, COLOR_PAIR(piece_color(color_type)));
-            if (item_type == 1) mvwprintw(win, y, x, "B ");      /* Bomb */
-            else if (item_type == 2) mvwprintw(win, y, x, "D "); /* Drill */
-            else if (item_type == 3) mvwprintw(win, y, x, "S "); /* Shield */
-            else if (item_type == 4) mvwprintw(win, y, x, "G "); /* Gun */
-            else mvwprintw(win, y, x, "  ");
-            wattroff(win, COLOR_PAIR(piece_color(color_type)));
+            if (item_type >= 1 && item_type <= 4) {
+                wattron(win, COLOR_PAIR(item_color(color_type)));
+                if (item_type == 1) mvwprintw(win, y, x, " B");
+                else if (item_type == 2) mvwprintw(win, y, x, " D");
+                else if (item_type == 3) mvwprintw(win, y, x, " S");
+                else if (item_type == 4) mvwprintw(win, y, x, " G");
+                wattroff(win, COLOR_PAIR(item_color(color_type)));
+            } else {
+                wattron(win, COLOR_PAIR(piece_color(color_type)));
+                mvwprintw(win, y, x, "  ");
+                wattroff(win, COLOR_PAIR(piece_color(color_type)));
+            }
         } else {
             mvwprintw(win, y, x, "  ");
         }
@@ -162,26 +194,18 @@ static void draw_bomb_preview_cell(WINDOW *win, int y, int x, int type) {
     } else {
         int item_type = type / 10;
 
-        wattron(win, COLOR_PAIR(COLOR_BOMB_BLOCK_PREVIEW) | A_BOLD);
-        if (item_type == 1) mvwprintw(win, y, x, "B ");
-        else if (item_type == 2) mvwprintw(win, y, x, "D ");
-        else if (item_type == 3) mvwprintw(win, y, x, "S ");
-        else if (item_type == 4) mvwprintw(win, y, x, "G ");
+        wattron(win, COLOR_PAIR(30) | A_BOLD);
+        if (item_type == 1) mvwprintw(win, y, x, " B");
+        else if (item_type == 2) mvwprintw(win, y, x, " D");
+        else if (item_type == 3) mvwprintw(win, y, x, " S");
+        else if (item_type == 4) mvwprintw(win, y, x, " G");
         else mvwprintw(win, y, x, "  ");
-        wattroff(win, COLOR_PAIR(COLOR_BOMB_BLOCK_PREVIEW) | A_BOLD);
+        wattroff(win, COLOR_PAIR(30) | A_BOLD);
     }
 }
 
 static int has_ready_bomb(const GameState *st) {
     return st->ch.inv_count > 0 && st->ch.inventory[0] == 1;
-}
-
-static int has_inventory_item(const GameState *st, int item_type) {
-    for (int i = 0; i < st->ch.inv_count; i++) {
-        if (st->ch.inventory[i] == item_type)
-            return 1;
-    }
-    return 0;
 }
 
 static int is_bomb_preview_cell(const GameState *st, int r, int c) {
@@ -254,7 +278,177 @@ static void draw_effects(const GameState *st, int start_y, int start_x) {
     }
 }
 
-static void render(void) {
+#define HEART_ROWS 3
+#define HEART_COLS 3
+static const int HEART_PATTERN[HEART_ROWS][HEART_COLS] = {
+    {1, 0, 1},
+    {1, 1, 1},
+    {0, 1, 0},
+};
+
+static void draw_big_heart(int y, int x, int alive) {
+    int color = alive ? 32 : 33;
+    for (int r = 0; r < HEART_ROWS; r++) {
+        for (int c = 0; c < HEART_COLS; c++) {
+            if (!HEART_PATTERN[r][c])
+                continue;
+            attron(COLOR_PAIR(color));
+            mvprintw(y + r, x + c * CELL_W, "  ");
+            attroff(COLOR_PAIR(color));
+        }
+    }
+}
+
+static void draw_hp_hearts(int y, int x, int hp, int max_hp) {
+    int spacing = 4;
+    if (x < 0) x = 0;
+    for (int i = 0; i < max_hp; i++)
+        draw_big_heart(y + i * spacing, x, i < hp);
+}
+
+#define INVADER_W 6
+#define INVADER_H 4
+
+static const char INVADER_F1[INVADER_H][INVADER_W + 1] = {
+    ".#..#.",
+    ".####.",
+    "#.##.#",
+    ".#..#.",
+};
+
+static const char INVADER_F2[INVADER_H][INVADER_W + 1] = {
+    ".#..#.",
+    ".####.",
+    "#.##.#",
+    "#....#",
+};
+
+static void draw_invader(const GameState *st, int top_y, int left_x, int frame) {
+    int max_y, max_x;
+    getmaxyx(stdscr, max_y, max_x);
+    const char (*sprite)[INVADER_W + 1] =
+        (frame % 2 == 0) ? INVADER_F1 : INVADER_F2;
+
+    for (int r = 0; r < INVADER_H; r++) {
+        for (int c = 0; c < INVADER_W; c++) {
+            if (sprite[r][c] != '#')
+                continue;
+            if (st->attacker_stun_timer > 0 &&
+                (st->attacker_stun_timer / 3) % 2 == 0)
+                continue;
+
+            int cp = COLOR_PIECE_S;
+            if (st->harddrop_cooldown_timer > 0) {
+                int elapsed = HARD_DROP_COOLDOWN_TICKS - st->harddrop_cooldown_timer;
+                if (elapsed < 0) elapsed = 0;
+                if (elapsed > HARD_DROP_COOLDOWN_TICKS)
+                    elapsed = HARD_DROP_COOLDOWN_TICKS;
+                int restored_rows = (elapsed * INVADER_H) / HARD_DROP_COOLDOWN_TICKS;
+                if (r < INVADER_H - restored_rows)
+                    cp = 31;
+            }
+            if (st->boss_hit_timer > 0)
+                cp = COLOR_PIECE_Z;
+
+            int y = top_y + r;
+            int x = left_x + c * CELL_W;
+            if (y < 0 || y >= max_y || x < 0 || x + 1 >= max_x)
+                continue;
+
+            attron(COLOR_PAIR(cp));
+            mvprintw(y, x, "  ");
+            attroff(COLOR_PAIR(cp));
+        }
+    }
+}
+
+static void draw_shield_bubble(int sy, int sx, const Character *ch) {
+    int timer = 0;
+    if (ch->shield_timer > 0)
+        timer = ch->shield_timer;
+    else if (ch->stun_timer == 0 && ch->stun_invuln_timer > 0)
+        timer = ch->stun_invuln_timer;
+    if (timer <= 0 || ch->stun_timer > 0)
+        return;
+
+    int cy = sy + 1 + ch->y;
+    int cx = sx + 1 + ch->x * CELL_W;
+    int attr = COLOR_PAIR(COLOR_SHIELD_FX) | A_BOLD;
+    if (timer % 4 < 2)
+        attr |= A_REVERSE;
+
+    attron(attr);
+    if (cy - 1 > sy)
+        mvprintw(cy - 1, cx - 1, "/--\\");
+    mvprintw(cy, cx - 1, "|");
+    mvprintw(cy, cx + 2, "|");
+    if (cy + 1 < sy + BOARD_H + 1)
+        mvprintw(cy + 1, cx - 1, "\\--/");
+    attroff(attr);
+}
+
+static void draw_bomb_overlay(const GameState *st, int max_y, int max_x) {
+    if (st->bomb_flash_timer <= 0)
+        return;
+
+    static const char bomb_bmp[5][7][6] = {
+        {"1111.","1...1","1...1","1111.","1...1","1...1","1111."},
+        {".111.","1...1","1...1","1...1","1...1","1...1",".111."},
+        {"1...1","11.11","1.1.1","1...1","1...1","1...1","1...1"},
+        {"1111.","1...1","1...1","1111.","1...1","1...1","1111."},
+        {"..1..","..1..","..1..","..1..","..1..",".....","..1.."},
+    };
+
+    int letter_w = 5, letter_h = 7, letters = 5, gap = 1;
+    int total_w = letters * letter_w + (letters - 1) * gap;
+    int pw = (max_x * 85 / 100) / total_w;
+    int ph = (max_y * 75 / 100) / letter_h;
+    if (pw < 1) pw = 1;
+    if (ph < 1) ph = 1;
+
+    int text_w = total_w * pw;
+    int text_h = letter_h * ph;
+    int ox = (max_x - text_w) / 2;
+    int oy = (max_y - text_h) / 2;
+
+    int attr;
+    if (st->bomb_flash_timer >= 18)
+        attr = COLOR_PAIR(COLOR_PIECE_L) | A_BOLD;
+    else if (st->bomb_flash_timer > 5)
+        attr = COLOR_PAIR(COLOR_BOMB_FLASH) |
+            (((st->bomb_flash_timer / 3) % 2 == 0) ? A_BOLD : 0);
+    else
+        attr = COLOR_PAIR(COLOR_BOMB_FLASH) | A_DIM;
+
+    char fill[64];
+    int fill_len = pw;
+    if (fill_len > 63) fill_len = 63;
+    memset(fill, ' ', fill_len);
+    fill[fill_len] = '\0';
+
+    attron(attr);
+    for (int li = 0; li < letters; li++) {
+        int letter_x = ox + li * (letter_w + gap) * pw;
+        for (int br = 0; br < letter_h; br++) {
+            for (int bc = 0; bc < letter_w; bc++) {
+                if (bomb_bmp[li][br][bc] != '1')
+                    continue;
+                int px = letter_x + bc * pw;
+                for (int dy = 0; dy < ph; dy++) {
+                    int py = oy + br * ph + dy;
+                    if (py >= 0 && py < max_y && px >= 0 && px + fill_len <= max_x)
+                        mvprintw(py, px, "%s", fill);
+                }
+            }
+        }
+    }
+    attroff(attr);
+}
+
+static int g_pac_anim = 0;
+static int g_invader_anim = 0;
+
+void render_legacy(void) {
     pthread_mutex_lock(&g_lock);
     GameState st = g_state;
     pthread_mutex_unlock(&g_lock);
@@ -361,7 +555,7 @@ static void render(void) {
                 if (st.ch.facing == -1) mvprintw(sy, sx, "+@");
                 else if (st.ch.facing == 1) mvprintw(sy, sx, "@+");
                 else mvprintw(sy, sx, "v@");
-            } else if (st.ch.drill_timer > 0 || has_inventory_item(&st, 2)) {
+            } else if (st.ch.drill_timer > 0) {
                 if (st.ch.facing == -1) mvprintw(sy, sx, "<D");
                 else if (st.ch.facing == 1) mvprintw(sy, sx, "D>");
                 else mvprintw(sy, sx, "vD");
@@ -534,6 +728,341 @@ static void render(void) {
 }
 
 /* ──────────── Input Handling ──────────── */
+static void render(void) {
+    pthread_mutex_lock(&g_lock);
+    GameState st = g_state;
+    pthread_mutex_unlock(&g_lock);
+
+    int max_y, max_x;
+    getmaxyx(stdscr, max_y, max_x);
+
+    int board_h = BOARD_H + 2;
+    int board_w = BOARD_W * CELL_W + 2;
+    int start_y = (max_y - board_h) / 2;
+    int start_x = (max_x - board_w) / 2 - 8;
+    if (start_y < 6) start_y = 6;
+    if (start_x < 0) start_x = 0;
+
+    if (st.shake_timer > 0 && st.shake_intensity > 0) {
+        int span = st.shake_intensity * 2 + 1;
+        start_y += (rand() % span) - st.shake_intensity;
+        start_x += (rand() % span) - st.shake_intensity;
+        if (start_y < 6) start_y = 6;
+        if (start_x < 0) start_x = 0;
+    }
+
+    erase();
+
+    {
+        int title_y = start_y / 2 + 3;
+        int title_x = (st.attacker_hp <= 0) ? start_x - 8 : start_x - 10;
+        int heart_x = start_x - 9;
+        int heart_y = start_y / 2 + 5;
+        if (title_x < 0) title_x = 0;
+        if (heart_x < 0) heart_x = 0;
+        attron(COLOR_PAIR(33) | A_BOLD);
+        if (st.attacker_hp <= 0) mvprintw(title_y, title_x, "<DEAD>");
+        else mvprintw(title_y, title_x, "<Atk. HP>");
+        attroff(COLOR_PAIR(33) | A_BOLD);
+        draw_hp_hearts(heart_y, heart_x, st.attacker_hp, 5);
+    }
+
+    attron(COLOR_PAIR(COLOR_BORDER));
+    for (int r = 0; r < board_h; r++) {
+        mvprintw(start_y + r, start_x, "|");
+        mvprintw(start_y + r, start_x + board_w - 1, "|");
+    }
+    for (int c = 0; c < board_w; c++) {
+        mvprintw(start_y, start_x + c, "-");
+        mvprintw(start_y + board_h - 1, start_x + c, "-");
+    }
+    mvprintw(start_y, start_x, "+");
+    mvprintw(start_y, start_x + board_w - 1, "+");
+    mvprintw(start_y + board_h - 1, start_x, "+");
+    mvprintw(start_y + board_h - 1, start_x + board_w - 1, "+");
+    attroff(COLOR_PAIR(COLOR_BORDER));
+
+    for (int r = 0; r < BOARD_H; r++) {
+        for (int c = 0; c < BOARD_W; c++) {
+            int sy = start_y + 1 + r;
+            int sx = start_x + 1 + c * CELL_W;
+            if (r == st.ch.drill_target_y && c == st.ch.drill_target_x &&
+                st.ch.drill_crack_timer > 0) {
+                int phase = ((st.ch.drill_crack_timer - 1) * 4) / 8 + 1;
+                if (phase < 1) phase = 1;
+                if (phase > 4) phase = 4;
+                attron(COLOR_PAIR(COLOR_DRILL_FX) | A_BOLD);
+                mvprintw(sy, sx, "%d ", phase);
+                attroff(COLOR_PAIR(COLOR_DRILL_FX) | A_BOLD);
+            } else if (is_bomb_preview_cell(&st, r, c)) {
+                draw_cell(stdscr, sy, sx, st.board[r][c], 0, 0);
+                draw_bomb_preview_cell(stdscr, sy, sx, st.board[r][c]);
+            } else {
+                draw_cell(stdscr, sy, sx, st.board[r][c], 0, 0);
+            }
+        }
+    }
+
+    if (st.lock_flash_timer > 0) {
+        int attr = COLOR_PAIR(COLOR_PIECE_L) | A_BOLD;
+        if (st.lock_flash_timer <= 2) attr |= A_DIM;
+        attron(attr);
+        for (int i = 0; i < 4; i++) {
+            int r = st.lock_cells[i][0], c = st.lock_cells[i][1];
+            if (r >= 0 && r < BOARD_H && c >= 0 && c < BOARD_W)
+                mvprintw(start_y + 1 + r, start_x + 1 + c * CELL_W, "[]");
+        }
+        attroff(attr);
+    }
+
+    if (st.piece_type >= 1 && st.piece_type <= 7 && !st.game_over) {
+        int gr = ghost_row(&st);
+        const Shape *s = &SHAPES[st.piece_type][st.piece_rot % 4];
+        for (int i = 0; i < 4; i++) {
+            int r = gr + s->cells[i][0], c = st.piece_c + s->cells[i][1];
+            if (r >= 0 && r < BOARD_H && c >= 0 && c < BOARD_W &&
+                st.board[r][c] == 0)
+                draw_cell(stdscr, start_y + 1 + r,
+                          start_x + 1 + c * CELL_W, 0, 1, 0);
+        }
+    }
+
+    if (st.piece_type >= 1 && st.piece_type <= 7 && !st.game_over) {
+        const Shape *s = &SHAPES[st.piece_type][st.piece_rot % 4];
+        for (int i = 0; i < 4; i++) {
+            int r = st.piece_r + s->cells[i][0];
+            int c = st.piece_c + s->cells[i][1];
+            if (r >= 0 && r < BOARD_H && c >= 0 && c < BOARD_W) {
+                int item = (i == st.piece_item_idx) ? st.piece_item_type : 0;
+                draw_cell(stdscr, start_y + 1 + r,
+                          start_x + 1 + c * CELL_W, st.piece_type, 0, item);
+            }
+        }
+    }
+
+    {
+        int cr = st.ch.y, cc = st.ch.x;
+        if (cr >= 0 && cr < BOARD_H && cc >= 0 && cc < BOARD_W) {
+            int cy = start_y + 1 + cr;
+            int cx = start_x + 1 + cc * CELL_W;
+            g_pac_anim++;
+            int mouth = (g_pac_anim / 6) % 2;
+
+            if (st.ch.stun_timer > 0) {
+                attron(COLOR_PAIR(COLOR_CHAR_STUN) | A_BOLD);
+                mvprintw(cy, cx, (st.ch.stun_timer % 4 < 2) ? "XX" : "xx");
+                attroff(COLOR_PAIR(COLOR_CHAR_STUN) | A_BOLD);
+            } else if (st.ch.carrying) {
+                attron(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
+                if (st.ch.facing == 1) mvprintw(cy, cx, "o]");
+                else if (st.ch.facing == -1) mvprintw(cy, cx, "[o");
+                else mvprintw(cy, cx, "oo");
+                attroff(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
+            } else if (st.ch.drill_timer > 0) {
+                attron(COLOR_PAIR(COLOR_DRILL_FX) | A_BOLD);
+                if (st.ch.facing == 1) mvprintw(cy, cx, ">>");
+                else if (st.ch.facing == -1) mvprintw(cy, cx, "<<");
+                else mvprintw(cy, cx, "vv");
+                attroff(COLOR_PAIR(COLOR_DRILL_FX) | A_BOLD);
+            } else {
+                attron(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
+                if (mouth) {
+                    if (st.ch.facing == 1) mvprintw(cy, cx, "o>");
+                    else if (st.ch.facing == -1) mvprintw(cy, cx, "<o");
+                    else mvprintw(cy, cx, "oo");
+                } else {
+                    mvprintw(cy, cx, "oo");
+                }
+                attroff(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
+            }
+            draw_shield_bubble(start_y, start_x, &st.ch);
+        }
+    }
+
+    attron(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
+    for (int i = 0; i < st.num_bullets; i++) {
+        int r = st.bullets[i][1], c = st.bullets[i][0];
+        if (r >= -4 && r < BOARD_H && c >= 0 && c < BOARD_W)
+            mvprintw(start_y + 1 + r, start_x + 1 + c * CELL_W, "^^");
+    }
+    attroff(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
+
+    if (st.attacker_hp > 0) {
+        g_invader_anim++;
+        draw_invader(&st, start_y - INVADER_H - 1,
+                     start_x + 1 + (st.piece_c - 2) * CELL_W,
+                     g_invader_anim / 15);
+    }
+
+    draw_effects(&st, start_y, start_x);
+
+    int panel_x = start_x + board_w + 4;
+    int panel_y = start_y / 3 - 1;
+    if (panel_y < 0) panel_y = 0;
+
+    attron(A_BOLD);
+    mvprintw(panel_y++, panel_x, "TETRIS VS");
+    attroff(A_BOLD);
+    mvprintw(panel_y++, panel_x, "Level: %d", st.level);
+    mvprintw(panel_y++, panel_x, "Lines: %d", st.lines);
+    mvprintw(panel_y++, panel_x, "High : %d", st.highscore);
+    panel_y++;
+
+    if (st.combo_timer > 0 && st.combo > 1) {
+        attron(COLOR_PAIR(COLOR_COMBO) | A_BOLD);
+        mvprintw(panel_y++, panel_x, "x%d COMBO!", st.combo);
+        attroff(COLOR_PAIR(COLOR_COMBO) | A_BOLD);
+    } else {
+        panel_y++;
+    }
+
+    {
+        const char *item_names[] = {"", "Bomb", "Drill", "Shield", "Gun"};
+        if (st.next_item_idx >= 0 && st.next_item_type >= 1 && st.next_item_type <= 4)
+            mvprintw(panel_y++, panel_x, "Next: [%s]", item_names[st.next_item_type]);
+        else
+            mvprintw(panel_y++, panel_x, "Next:");
+    }
+    if (st.next_type >= 1 && st.next_type <= 7) {
+        const Shape *s = &SHAPES[st.next_type][0];
+        for (int i = 0; i < 4; i++) {
+            int item = (i == st.next_item_idx) ? st.next_item_type : 0;
+            draw_cell(stdscr, panel_y + 1 + s->cells[i][0],
+                      panel_x + 2 + s->cells[i][1] * CELL_W,
+                      st.next_type, 0, item);
+        }
+    }
+    panel_y += 4;
+
+    mvprintw(panel_y++, panel_x, "--- Attacker ---");
+    if (st.attacker_stun_timer > 0) {
+        attron(COLOR_PAIR(COLOR_CHAR_STUN) | A_BOLD);
+        mvprintw(panel_y++, panel_x, "STUNNED! %.1fs",
+                 ticks_to_seconds(st.attacker_stun_timer));
+        attroff(COLOR_PAIR(COLOR_CHAR_STUN) | A_BOLD);
+    } else {
+        mvprintw(panel_y++, panel_x, "Status: OK");
+    }
+    if (st.harddrop_cooldown_timer > 0) {
+        attron(COLOR_PAIR(COLOR_PIECE_Z) | A_BOLD);
+        mvprintw(panel_y++, panel_x, "Harddrop CD: %.1fs",
+                 ticks_to_seconds(st.harddrop_cooldown_timer));
+        attroff(COLOR_PAIR(COLOR_PIECE_Z) | A_BOLD);
+    } else {
+        attron(COLOR_PAIR(COLOR_PIECE_S) | A_BOLD);
+        mvprintw(panel_y++, panel_x, "Harddrop: READY");
+        attroff(COLOR_PAIR(COLOR_PIECE_S) | A_BOLD);
+    }
+    mvprintw(panel_y++, panel_x, "Score: %d", st.atkscore);
+    panel_y++;
+
+    mvprintw(panel_y++, panel_x, "--- Defender ---");
+    if (st.ch.stun_timer > 0)
+        mvprintw(panel_y++, panel_x, "STUNNED! %.1fs",
+                 ticks_to_seconds(st.ch.stun_timer));
+    else if (st.ch.stun_invuln_timer > 0)
+        mvprintw(panel_y++, panel_x, "INVULN! %.1fs",
+                 ticks_to_seconds(st.ch.stun_invuln_timer));
+    else
+        mvprintw(panel_y++, panel_x, "Status: OK");
+
+    {
+        const char *items[] = {"", "💣 Bomb", "⛏️  Drill", "🛡  Shield", "🔫 Gun"};
+        const char *empty = "  Empty";
+        int slot_w = 11;
+        for (int slot = 0; slot < 3; slot++) {
+            int inv = (slot < st.ch.inv_count) ? st.ch.inventory[slot] : 0;
+            const char *label = (inv > 0 && inv <= 4) ? items[inv] : empty;
+            mvprintw(panel_y, panel_x + slot * slot_w, "[");
+            mvprintw(panel_y, panel_x + slot * slot_w + 1, "%s", label);
+            mvprintw(panel_y, panel_x + (slot + 1) * slot_w - 1, "]");
+        }
+        panel_y++;
+    }
+
+    if (st.ch.shield_timer > 0) {
+        attron(COLOR_PAIR(COLOR_SHIELD_FX) | A_BOLD);
+        mvprintw(panel_y++, panel_x, "[ SHIELD %.1fs ]",
+                 ticks_to_seconds(st.ch.shield_timer));
+        attroff(COLOR_PAIR(COLOR_SHIELD_FX) | A_BOLD);
+    }
+    if (st.ch.drill_timer > 0) {
+        attron(COLOR_PAIR(COLOR_DRILL_FX) | A_BOLD);
+        mvprintw(panel_y++, panel_x, "[ DRILL  %.1fs ]",
+                 ticks_to_seconds(st.ch.drill_timer));
+        attroff(COLOR_PAIR(COLOR_DRILL_FX) | A_BOLD);
+    }
+    mvprintw(panel_y++, panel_x, "Carry: %s", st.ch.carrying ? "Block" : "None");
+    mvprintw(panel_y++, panel_x, "Score: %d", st.defscore);
+    panel_y++;
+
+    if (g_role == 0) attron(COLOR_PAIR(COLOR_PIECE_I) | A_BOLD);
+    else attron(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
+    mvprintw(panel_y++, panel_x, "You: %s", g_role == 0 ? "TETRIS" : "CHARACTER");
+    if (g_role == 0) attroff(COLOR_PAIR(COLOR_PIECE_I) | A_BOLD);
+    else attroff(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
+
+    attron(A_BOLD);
+    mvprintw(panel_y++, panel_x, "--- Controls ---");
+    attroff(A_BOLD);
+    mvprintw(panel_y++, panel_x, "WASD+Space: Tetris");
+    mvprintw(panel_y++, panel_x, "Arrows+ZXC: Char");
+    mvprintw(panel_y++, panel_x, "P=Pause R=Restart Q=Quit");
+
+    if (st.popup_timer > 0) {
+        int pop_y = start_y + BOARD_H / 2 - (24 - st.popup_timer) / 3;
+        int pop_x = start_x + board_w / 2 - 3;
+        if (st.popup_score > 0) {
+            attron(COLOR_PAIR(COLOR_PIECE_O) | A_BOLD);
+            mvprintw(pop_y, pop_x, "+%d", st.popup_score);
+            attroff(COLOR_PAIR(COLOR_PIECE_O) | A_BOLD);
+        } else {
+            attron(COLOR_PAIR(COLOR_PIECE_Z) | A_BOLD);
+            mvprintw(pop_y, pop_x, "-%d", -st.popup_score);
+            attroff(COLOR_PAIR(COLOR_PIECE_Z) | A_BOLD);
+        }
+    }
+
+    if (!st.game_started) {
+        int cy = max_y / 2;
+        int cx = max_x / 2 - 12;
+        attron(A_BOLD | A_BLINK);
+        mvprintw(cy, cx, "Waiting for other player...");
+        attroff(A_BOLD | A_BLINK);
+    }
+
+    if (st.paused) {
+        int cy = max_y / 2;
+        int cx = max_x / 2 - 10;
+        attron(A_BOLD | COLOR_PAIR(31));
+        mvprintw(cy,     cx, "        PAUSED       ");
+        mvprintw(cy + 1, cx, " Press P to Resume   ");
+        mvprintw(cy + 2, cx, " R=Restart  Q=Quit   ");
+        attroff(A_BOLD | COLOR_PAIR(31));
+    }
+
+    if (st.game_over) {
+        int cy = max_y / 2;
+        int cx = max_x / 2 - 11;
+        attron(A_BOLD | COLOR_PAIR(COLOR_PIECE_Z));
+        mvprintw(cy - 2, cx, "                       ");
+        mvprintw(cy - 1, cx, "   ==================  ");
+        mvprintw(cy,     cx, "     GAME  OVER !      ");
+        if (st.attacker_hp <= 0)
+            mvprintw(cy + 1, cx, "    DEFENDER WINS!     ");
+        else
+            mvprintw(cy + 1, cx, "    ATTACKER WINS!     ");
+        mvprintw(cy + 2, cx, "    Score: %-8d    ", st.score);
+        mvprintw(cy + 3, cx, "   R=Restart  Q=Quit   ");
+        mvprintw(cy + 4, cx, "   ==================  ");
+        mvprintw(cy + 5, cx, "                       ");
+        attroff(A_BOLD | COLOR_PAIR(COLOR_PIECE_Z));
+    }
+
+    draw_bomb_overlay(&st, max_y, max_x);
+    refresh();
+}
+
 static void handle_input(void) {
     int ch = getch();
     if (ch == ERR) return;
@@ -543,6 +1072,10 @@ static void handle_input(void) {
     if (ch == 'q' || ch == 'Q') {
         key = K_QUIT;
         g_running = 0;
+    } else if (ch == 'r' || ch == 'R') {
+        key = K_RESTART;
+    } else if (ch == 'p' || ch == 'P') {
+        key = K_PAUSE;
     } else if (g_role == 0) {
         /* Tetris player: WASD + Space */
         switch (ch) {

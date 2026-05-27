@@ -40,6 +40,8 @@
 #define STUN_TICKS    60      /* 2 seconds at 30fps */
 #define STUN_INVULN_TICKS 60  /* 2 seconds after stun ends */
 #define LOCK_DELAY    15      /* ticks before piece locks */
+#define HARD_DROP_COOLDOWN_TICKS 90
+#define SOFT_DROP_COOLDOWN_TICKS 4
 
 /* ──────────── Piece types ──────────── */
 typedef enum {
@@ -150,6 +152,8 @@ typedef struct {
     int piece_item_type; /* 0=None, 1=Bomb, 2=Drill, 3=Shield, 4=Gun */
 
     int next_type;     /* next piece preview */
+    int next_item_idx;
+    int next_item_type;
 
     /* character */
     Character ch;
@@ -160,12 +164,26 @@ typedef struct {
     int atkscore;
     int level;
     int lines;
+    int highscore;
 
     int game_over;
     int game_started;  /* both players connected? */
+    int paused;
     int attacker_hp;
     int attacker_stun_timer;
     int attacker_spawn_delay;
+    int harddrop_cooldown_timer;
+    int softdrop_cooldown_timer;
+    int combo;
+    int combo_timer;
+    int popup_score;
+    int popup_timer;
+    int lock_flash_timer;
+    int lock_cells[4][2];
+    int bomb_flash_timer;
+    int boss_hit_timer;
+    int shake_timer;
+    int shake_intensity;
     int num_bullets;
     int bullets[MAX_BULLETS][2];  /* [i][0]=col, [i][1]=row */
     int num_effects;
@@ -208,6 +226,8 @@ typedef struct {
 #define K_CH_JUMP     16
 #define K_CH_ITEM     17  /* use item */
 /* Common */
+#define K_PAUSE       97
+#define K_RESTART     98
 #define K_QUIT        99
 
 /* ──────────── Helpers ──────────── */
