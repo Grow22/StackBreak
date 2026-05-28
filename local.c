@@ -1746,7 +1746,7 @@ int main(void) {
     load_highscore();
     init_game();
 
-    printf("\033[8;28;80t");
+    printf("\033[8;30;80t");
     fflush(stdout);
     usleep(50000);
 
@@ -1757,10 +1757,19 @@ int main(void) {
 
     struct winsize ws;
     if (ioctl(STDOUT_FILENO,TIOCGWINSZ,&ws)==0) {
-        if (ws.ws_row<28||ws.ws_col<60) {
-            endwin();
-            fprintf(stderr,"Terminal too small! Need 60x28+, got %dx%d\n",ws.ws_col,ws.ws_row);
-            return 1;
+        if (ws.ws_row<30||ws.ws_col<80) {
+	    ws.ws_row = 30;
+	    ws.ws_col = 80;
+
+	    if (ioctl(STDOUT_FILENO, TIOCSWINSZ, &ws) == 0) {
+		    usleep(100000);
+		    endwin();
+		    refresh();
+	    } else {
+	            endwin();
+	            fprintf(stderr,"Terminal too small! Need 80x30+, got %dx%d\n",ws.ws_col,ws.ws_row);
+        	    return 1;
+	    }
         }
     }
 

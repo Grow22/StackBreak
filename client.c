@@ -996,20 +996,31 @@ int main(int argc, char *argv[]) {
     int rows, cols;
     struct winsize ws;
 
-    printf("\033[8;32;80t");
+    printf("\033[8;30;80t");
     fflush(stdout);
     usleep(50000);
 
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0) {
         rows = ws.ws_row;
         cols = ws.ws_col;
-        if (rows < 32 || cols < 80) {
-            endwin();
-            fprintf(stderr,
-                "Terminal too small! Need at least 32x80, got %dx%d\n",
-                cols, rows);
-            close(g_sock);
-            return 1;
+        if (rows < 30 || cols < 80) {
+		ws.ws_row = 30;
+		ws.ws_col = 80;
+		if (ioctl(STDOUT_FILENO, TIOCSWINSZ, &ws) == 0) {
+			usleep(100000);
+			endwin();
+			refresh();
+
+			rows = 30;
+			cols = 80;
+		} else {
+	            endwin();
+	            fprintf(stderr,
+	                "Terminal too small! Need at least 32x80, got %dx%d\n",
+        	        cols, rows);
+	            close(g_sock);
+	            return 1;
+		}
         }
     }
 
