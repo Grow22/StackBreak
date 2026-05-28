@@ -1746,7 +1746,7 @@ int main(void) {
     load_highscore();
     init_game();
 
-    printf("\033[8;28;60t");
+    printf("\033[8;28;80t");
     fflush(stdout);
     usleep(50000);
 

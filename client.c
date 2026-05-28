@@ -996,17 +996,17 @@ int main(int argc, char *argv[]) {
     int rows, cols;
     struct winsize ws;
 
-    printf("\033[8;28;60t");
+    printf("\033[8;32;80t");
     fflush(stdout);
     usleep(50000);
 
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0) {
         rows = ws.ws_row;
         cols = ws.ws_col;
-        if (rows < 28 || cols < 60) {
+        if (rows < 32 || cols < 80) {
             endwin();
             fprintf(stderr,
-                "Terminal too small! Need at least 60x28, got %dx%d\n",
+                "Terminal too small! Need at least 32x80, got %dx%d\n",
                 cols, rows);
             close(g_sock);
             return 1;
