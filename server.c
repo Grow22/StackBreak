@@ -62,6 +62,12 @@ static void do_score_and_combo(int lc);
 static void trigger_shake(int intensity, int dur);
 static void tick_particles(void);
 static void try_jump(void);
+static int pick_item_cell_balanced(int type, int rot, int pc);
+static QueuedPiece make_queued_piece(void);
+static void sync_next_piece_preview(void);
+static void init_piece_queue(void);
+static QueuedPiece pop_piece_queue(void);
+static void set_current_piece(QueuedPiece piece);
 
 /* ──────────── Signal Handler ──────────── */
 static void handle_signal(int sig) {
@@ -249,25 +255,8 @@ static void init_game(void) {
 
     /* spawn first piece */
     srand(time(NULL));
-    g_state.piece_type = random_piece();
-    g_state.piece_rot  = 0;
-    g_state.piece_r    = 0;
-    g_state.piece_c    = BOARD_W / 2;
-    g_state.next_type  = random_piece();
-    if (rand() % 100 < 50) {
-        g_state.piece_item_idx = rand() % 4;
-        g_state.piece_item_type = (rand() % 4) + 1;
-    } else {
-        g_state.piece_item_idx = -1;
-        g_state.piece_item_type = 0;
-    }
-    if (rand() % 100 < 50) {
-        g_next_item_idx = rand() % 4;
-        g_next_item_type = (rand() % 4) + 1;
-    } else {
-        g_next_item_idx = -1;
-        g_next_item_type = 0;
-    }
+    set_current_piece(make_queued_piece());
+    init_piece_queue();
 
     /* character starts at bottom center */
     g_state.ch.x = BOARD_W / 2;
@@ -562,25 +551,52 @@ static int pick_item_cell_balanced(int type, int rot, int pc) {
     return rand() % 4;
 }
 
+static QueuedPiece make_queued_piece(void) {
+    QueuedPiece piece;
+    piece.type = random_piece();
+    if (rand() % 100 < 50) {
+        piece.item_idx = pick_item_cell_balanced(piece.type, 0, BOARD_W / 2);
+        piece.item_type = (rand() % 4) + 1;
+    } else {
+        piece.item_idx = -1;
+        piece.item_type = 0;
+    }
+    return piece;
+}
+
+static void sync_next_piece_preview(void) {
+    g_state.next_type = g_state.piece_queue[0].type;
+    g_next_item_idx = g_state.piece_queue[0].item_idx;
+    g_next_item_type = g_state.piece_queue[0].item_type;
+}
+
+static void init_piece_queue(void) {
+    for (int i = 0; i < PIECE_QUEUE_DEPTH; i++)
+        g_state.piece_queue[i] = make_queued_piece();
+    sync_next_piece_preview();
+}
+
+static QueuedPiece pop_piece_queue(void) {
+    QueuedPiece piece = g_state.piece_queue[0];
+    for (int i = 0; i < PIECE_QUEUE_DEPTH - 1; i++)
+        g_state.piece_queue[i] = g_state.piece_queue[i + 1];
+    g_state.piece_queue[PIECE_QUEUE_DEPTH - 1] = make_queued_piece();
+    sync_next_piece_preview();
+    return piece;
+}
+
+static void set_current_piece(QueuedPiece piece) {
+    g_state.piece_type = piece.type;
+    g_state.piece_rot = 0;
+    g_state.piece_r = 0;
+    g_state.piece_c = BOARD_W / 2;
+    g_state.piece_item_idx = piece.item_idx;
+    g_state.piece_item_type = piece.item_type;
+}
+
 /* Spawn new piece */
 static void spawn_piece(void) {
-    g_state.piece_type = g_state.next_type;
-    g_state.piece_rot  = 0;
-    g_state.piece_r    = 0;
-    g_state.piece_c    = BOARD_W / 2;
-    g_state.piece_item_idx = g_next_item_idx;
-    g_state.piece_item_type = g_next_item_type;
-    g_state.next_type  = random_piece();
-
-    /* 50% chance to spawn an item */
-    if (rand() % 100 < 50) {
-        g_next_item_idx =
-            pick_item_cell_balanced(g_state.next_type, 0, g_state.piece_c);
-        g_next_item_type = (rand() % 4) + 1; /* 1..4 */
-    } else {
-        g_next_item_idx = -1;
-        g_next_item_type = 0;
-    }
+    set_current_piece(pop_piece_queue());
 
     /* game over check */
     if (!piece_valid(g_state.piece_type, g_state.piece_rot,

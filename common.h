@@ -27,6 +27,7 @@
 #define MAX_BULLETS  3
 #define MAX_EFFECTS  12
 #define MAX_PARTICLES 48
+#define PIECE_QUEUE_DEPTH 3
 
 #define EFFECT_NONE      0
 #define EFFECT_BOMB      1
@@ -150,6 +151,12 @@ typedef struct {
     int bold;
 } VisualParticle;
 
+typedef struct {
+    int type;
+    int item_idx;
+    int item_type;
+} QueuedPiece;
+
 /* ──────────── Game State ──────────── */
 typedef struct {
     int board[BOARD_H][BOARD_W];   /* 0=empty, 1-7=block color */
@@ -164,6 +171,7 @@ typedef struct {
     int next_type;     /* next piece preview */
     int next_item_idx;
     int next_item_type;
+    QueuedPiece piece_queue[PIECE_QUEUE_DEPTH];
 
     /* character */
     Character ch;
