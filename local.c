@@ -528,72 +528,11 @@ static int clear_lines(void) {
 
 
 /* ──────────── Spawn Piece ──────────── */
-/* Count existing items per board third (left 0-3, mid 4-6, right 7-9) */
-static void count_board_items_zone(int *left, int *mid, int *right) {
-    *left = 0; *mid = 0; *right = 0;
-    for (int r = 0; r < BOARD_H; r++)
-        for (int c = 0; c < BOARD_W; c++)
-            if (g_state.board[r][c] >= 10) {
-                if (c < 4) (*left)++;
-                else if (c < 7) (*mid)++;
-                else (*right)++;
-            }
-}
-
-/* Pick which of the 4 piece cells gets the item, biased toward the
-   zone of the board with fewer existing items.
-   Stronger imbalance → stronger bias, but always some randomness. */
-static int pick_item_cell_balanced(int type, int rot, int pc) {
-    int cells[4][2];
-    piece_cells(type, rot, 0, pc, cells);
-
-    int zl, zm, zr;
-    count_board_items_zone(&zl, &zm, &zr);
-    int total = zl + zm + zr;
-
-    /* If very few items on board, just random */
-    if (total < 3) return rand() % 4;
-
-    /* Find the lightest zone */
-    int min_zone = 0; /* 0=left, 1=mid, 2=right */
-    int min_val = zl;
-    if (zm < min_val) { min_val = zm; min_zone = 1; }
-    if (zr < min_val) { min_val = zr; min_zone = 2; }
-
-    /* Classify cells by zone */
-    int zone_cells[3][4], zone_n[3] = {0,0,0};
-    for (int i = 0; i < 4; i++) {
-        int z = (cells[i][1] < 4) ? 0 : (cells[i][1] < 7) ? 1 : 2;
-        zone_cells[z][zone_n[z]++] = i;
-    }
-
-    /* If no cells in the lightest zone, try second lightest */
-    if (zone_n[min_zone] == 0) {
-        int vals[3] = {zl, zm, zr};
-        int second = -1, sv = 999;
-        for (int z = 0; z < 3; z++)
-            if (z != min_zone && vals[z] < sv && zone_n[z] > 0)
-                { sv = vals[z]; second = z; }
-        if (second >= 0) min_zone = second;
-        else return rand() % 4;
-    }
-
-    /* Adaptive bias: bigger imbalance → stronger bias (55%-90%) */
-    int max_val = zl; if (zm>max_val) max_val=zm; if (zr>max_val) max_val=zr;
-    int diff = max_val - min_val;
-    int bias = 55 + diff * 10;
-    if (bias > 90) bias = 90;
-
-    if (rand() % 100 < bias)
-        return zone_cells[min_zone][rand() % zone_n[min_zone]];
-    return rand() % 4;
-}
-
 static QueuedPiece make_queued_piece(void) {
     QueuedPiece piece;
     piece.type = random_piece();
     if (rand() % 100 < 50) {
-        piece.item_idx = pick_item_cell_balanced(piece.type, 0, BOARD_W / 2);
+        piece.item_idx = rand() % 4;
         piece.item_type = (rand() % 4) + 1;
     } else {
         piece.item_idx = -1;
