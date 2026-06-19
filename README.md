@@ -271,17 +271,9 @@ make clean
 
 ### 클라이언트-서버 구조
 
-```mermaid
-graph LR
-    C1["Client 1<br/>(공격자)"]
-    C2["Client 2<br/>(방어자)"]
-    S["Server<br/>게임 로직 · 물리 엔진 · 충돌 판정<br/>(TCP/IP : 9190)"]
-
-    C1 -->|키 입력 전송| S
-    S -->|GameState 브로드캐스트| C1
-    C2 -->|키 입력 전송| S
-    S -->|GameState 브로드캐스트| C2
-```
+<p align="center">
+  <img src="images/architecture.svg" width="780" alt="클라이언트-서버 구조"/>
+</p>
 
 - **서버**: 게임의 모든 로직(블록 낙하, 충돌 판정, 아이템, 물리 엔진, 점수 계산)을 처리하고, 매 틱(~30fps)마다 전체 `GameState` 구조체를 양쪽 클라이언트에 브로드캐스트합니다.
 - **클라이언트**: 서버에서 받은 `GameState`를 `ncursesw`로 렌더링하고, 플레이어의 키 입력을 서버로 전송합니다.

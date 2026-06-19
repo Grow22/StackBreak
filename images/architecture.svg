@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 280" font-family="'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#555"/>
+    </marker>
+  </defs>
+
+  <rect x="2" y="2" width="996" height="276" rx="12" fill="#f8f9ff" stroke="#e1e4f0"/>
+
+  <!-- Client 1 -->
+  <rect x="30" y="105" width="150" height="70" rx="6" fill="#ECECFF" stroke="#9370DB" stroke-width="1.5"/>
+  <text x="105" y="135" text-anchor="middle" font-size="15" fill="#333">Client 1</text>
+  <text x="105" y="158" text-anchor="middle" font-size="13" fill="#555">(공격자)</text>
+
+  <!-- Server -->
+  <rect x="380" y="80" width="240" height="120" rx="6" fill="#ECECFF" stroke="#9370DB" stroke-width="1.5"/>
+  <text x="500" y="112" text-anchor="middle" font-size="16" font-weight="bold" fill="#333">Server</text>
+  <text x="500" y="140" text-anchor="middle" font-size="13" fill="#444">게임 로직 · 물리 엔진 · 충돌 판정</text>
+  <text x="500" y="170" text-anchor="middle" font-size="13" fill="#666">TCP/IP : 9190</text>
+
+  <!-- Client 2 -->
+  <rect x="820" y="105" width="150" height="70" rx="6" fill="#ECECFF" stroke="#9370DB" stroke-width="1.5"/>
+  <text x="895" y="135" text-anchor="middle" font-size="15" fill="#333">Client 2</text>
+  <text x="895" y="158" text-anchor="middle" font-size="13" fill="#555">(방어자)</text>
+
+  <!-- Left arrows -->
+  <line x1="185" y1="128" x2="373" y2="128" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="279" y="120" text-anchor="middle" font-size="12.5" fill="#333">키 입력 전송</text>
+  <line x1="373" y1="152" x2="185" y2="152" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="279" y="170" text-anchor="middle" font-size="12.5" fill="#333">GameState 브로드캐스트</text>
+
+  <!-- Right arrows -->
+  <line x1="815" y1="128" x2="627" y2="128" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="721" y="120" text-anchor="middle" font-size="12.5" fill="#333">키 입력 전송</text>
+  <line x1="627" y1="152" x2="815" y2="152" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="721" y="170" text-anchor="middle" font-size="12.5" fill="#333">GameState 브로드캐스트</text>
+</svg>
