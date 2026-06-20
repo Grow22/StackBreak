@@ -9,6 +9,7 @@
  */
 
 #include "common.h"
+#include <poll.h>
 
 /* ──────────── Global State ──────────── */
 static GameState g_state;
@@ -17,6 +18,10 @@ static int       g_num_clients = 0;
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static volatile sig_atomic_t g_running = 1;
 static int       g_highscore = 0;
+static ScoreTable g_score_table;
+static char g_player_names[MAX_CLIENTS][MAX_NAME_LEN] = {
+    "Tetris", "Character"
+};
 static int       drop_counter = 0;
 static int       gravity_counter = 0;
 static int       g_coyote_timer = 0;
@@ -44,6 +49,7 @@ typedef VisualParticle Particle;
 #define g_is_paused                  g_state.paused
 
 #define HIGHSCORE_FILE "highscore.dat"
+#define SCORE_FILE "multi_scores.dat"
 #define COYOTE_TICKS 5
 #define JUMP_BUFFER_TICKS 6
 
@@ -75,31 +81,107 @@ static void handle_signal(int sig) {
 }
 
 /* ──────────── High Score (File I/O) ──────────── */
-static void load_highscore(void) {
-    struct stat st;
-    if (stat(HIGHSCORE_FILE, &st) < 0) {
-        g_highscore = 0;
-        return;
+static void copy_score_name(char dst[MAX_NAME_LEN], const char *src) {
+    strncpy(dst, src, MAX_NAME_LEN - 1);
+    dst[MAX_NAME_LEN - 1] = '\0';
+}
+
+static void sort_score_table(void) {
+    for (int i = 1; i < g_score_table.count; i++) {
+        ScoreEntry entry = g_score_table.entries[i];
+        int j = i - 1;
+        while (j >= 0 && g_score_table.entries[j].score < entry.score) {
+            g_score_table.entries[j + 1] = g_score_table.entries[j];
+            j--;
+        }
+        g_score_table.entries[j + 1] = entry;
     }
-    int fd = open(HIGHSCORE_FILE, O_RDONLY);
-    if (fd < 0) { g_highscore = 0; return; }
-    if (read(fd, &g_highscore, sizeof(int)) < 0) {
-        g_highscore = 0;
-    }
+}
+
+static void refresh_highscore(void) {
+    g_highscore = g_score_table.count > 0
+        ? g_score_table.entries[0].score : 0;
+    g_state.highscore = g_highscore;
+}
+
+static void write_score_table(void) {
+    int fd = open(SCORE_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) return;
+    if (write(fd, &g_score_table, sizeof(g_score_table)) < 0) { /* ignore */ }
     close(fd);
 }
 
-static void save_highscore(void) {
-    update_total_score();
-    if (g_state.score <= g_highscore) return;
-    g_highscore = g_state.score;
-    g_state.highscore = g_highscore;
-    int fd = open(HIGHSCORE_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0) return;
-    if (write(fd, &g_highscore, sizeof(int)) < 0) {
-        /* ignore error */
+static void load_highscore(void) {
+    memset(&g_score_table, 0, sizeof(g_score_table));
+
+    int fd = open(SCORE_FILE, O_RDONLY);
+    if (fd >= 0) {
+        ssize_t n = read(fd, &g_score_table, sizeof(g_score_table));
+        close(fd);
+        if (n != (ssize_t)sizeof(g_score_table) ||
+            g_score_table.count < 0 || g_score_table.count > MAX_RANKINGS)
+            memset(&g_score_table, 0, sizeof(g_score_table));
     }
-    close(fd);
+
+    if (g_score_table.count == 0) {
+        int legacy_score = 0;
+        fd = open(HIGHSCORE_FILE, O_RDONLY);
+        if (fd >= 0) {
+            if (read(fd, &legacy_score, sizeof(legacy_score)) == sizeof(legacy_score) &&
+                legacy_score > 0) {
+                copy_score_name(g_score_table.entries[0].player1, "Previous");
+                g_score_table.entries[0].player2[0] = '\0';
+                g_score_table.entries[0].score = legacy_score;
+                g_score_table.count = 1;
+            }
+            close(fd);
+        }
+    }
+
+    for (int i = 0; i < g_score_table.count; i++) {
+        g_score_table.entries[i].player1[MAX_NAME_LEN - 1] = '\0';
+        g_score_table.entries[i].player2[MAX_NAME_LEN - 1] = '\0';
+    }
+    sort_score_table();
+    refresh_highscore();
+}
+
+static void save_highscore(void) {
+    if (!g_state.game_over) return;
+    g_state.score = calculate_final_score(g_state.attacker_hp,
+                                          g_state.defscore,
+                                          g_state.atkscore);
+    if (g_state.score <= 0) return;
+    int previous_highscore = g_highscore;
+
+    int index = -1;
+    for (int i = 0; i < g_score_table.count; i++) {
+        if (strcmp(g_score_table.entries[i].player1, g_player_names[0]) == 0 &&
+            strcmp(g_score_table.entries[i].player2, g_player_names[1]) == 0) {
+            index = i;
+            break;
+        }
+    }
+
+    if (index >= 0) {
+        if (g_state.score <= g_score_table.entries[index].score) return;
+    } else if (g_score_table.count < MAX_RANKINGS) {
+        index = g_score_table.count++;
+    } else {
+        sort_score_table();
+        if (g_state.score <= g_score_table.entries[MAX_RANKINGS - 1].score)
+            return;
+        index = MAX_RANKINGS - 1;
+    }
+
+    copy_score_name(g_score_table.entries[index].player1, g_player_names[0]);
+    copy_score_name(g_score_table.entries[index].player2, g_player_names[1]);
+    g_score_table.entries[index].score = g_state.score;
+    sort_score_table();
+    refresh_highscore();
+    if (g_state.score > previous_highscore)
+        g_state.new_highscore = 1;
+    write_score_table();
 }
 
 /* ──────────── Random Piece ──────────── */
@@ -1178,7 +1260,7 @@ int main(int argc, char *argv[]) {
     printf("[Server] Listening on port %d\n", port);
     printf("[Server] Waiting for 2 players to connect...\n");
 
-    /* accept 2 clients */
+    /* Accept both clients before waiting for either player's name. */
     pthread_t reader_threads[MAX_CLIENTS];
 
     for (int i = 0; i < MAX_CLIENTS; i++) {
@@ -1194,26 +1276,111 @@ int main(int argc, char *argv[]) {
         g_clients[i] = cfd;
         g_num_clients++;
 
-        /* send role assignment */
-        MsgRole role_msg;
-        role_msg.type = MSG_ROLE;
-        role_msg.role = i;
-        send_all(cfd, &role_msg, sizeof(MsgRole));
+        MsgWelcome welcome;
+        memset(&welcome, 0, sizeof(welcome));
+        welcome.type = MSG_WELCOME;
+        welcome.role = i;
+        welcome.rankings = g_score_table;
+        if (send_all(cfd, &welcome, sizeof(welcome)) < 0) {
+            close(cfd);
+            g_num_clients--;
+            i--;
+            continue;
+        }
 
-        printf("[Server] Player %d connected (%s) from %s\n",
+        printf("[Server] Player %d connected (%s) from %s; waiting for name...\n",
                i + 1, i == 0 ? "Tetris" : "Character",
                inet_ntoa(cli_addr.sin_addr));
-
-        /* start reader thread */
-        ClientArg *ca = malloc(sizeof(ClientArg));
-        ca->fd   = cfd;
-        ca->role = i;
-        pthread_create(&reader_threads[i], NULL, client_reader, ca);
     }
 
-    if (g_num_clients == MAX_CLIENTS) {
-        printf("[Server] Both players connected! Game starting.\n");
+    int startup_ok = (g_num_clients == MAX_CLIENTS);
+    int names_ready = 0;
+    struct pollfd name_fds[MAX_CLIENTS];
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        name_fds[i].fd = g_clients[i];
+        name_fds[i].events = POLLIN;
+        name_fds[i].revents = 0;
+    }
+
+    while (startup_ok && names_ready < MAX_CLIENTS) {
+        int poll_result = poll(name_fds, MAX_CLIENTS, -1);
+        if (poll_result < 0) {
+            if (errno == EINTR && g_running) continue;
+            startup_ok = 0;
+            break;
+        }
+
+        for (int i = 0; i < MAX_CLIENTS && startup_ok; i++) {
+            short events = name_fds[i].revents;
+            if (name_fds[i].fd < 0 || events == 0) continue;
+
+            if (events & (POLLERR | POLLHUP | POLLNVAL)) {
+                fprintf(stderr,
+                        "[Server] Player %d disconnected during name entry.\n",
+                        i + 1);
+                startup_ok = 0;
+                break;
+            }
+            if (!(events & POLLIN)) continue;
+
+            MsgPlayerName name_msg;
+            if (recv_all(g_clients[i], &name_msg, sizeof(name_msg)) < 0 ||
+                name_msg.type != MSG_PLAYER_NAME) {
+                fprintf(stderr,
+                        "[Server] Player %d disconnected during name entry.\n",
+                        i + 1);
+                startup_ok = 0;
+                break;
+            }
+            name_msg.name[MAX_NAME_LEN - 1] = '\0';
+            copy_score_name(g_player_names[i],
+                            name_msg.name[0] != '\0' ? name_msg.name : "Guest");
+            name_fds[i].fd = -1;
+            names_ready++;
+
+            printf("[Server] Player %d ready (%s: %s)\n",
+                   i + 1, i == 0 ? "Tetris" : "Character",
+                   g_player_names[i]);
+        }
+    }
+
+    if (!startup_ok) {
+        g_running = 0;
+        fprintf(stderr, "[Server] Lobby cancelled. Closing all clients.\n");
+        for (int i = 0; i < g_num_clients; i++)
+            close(g_clients[i]);
+        close(server_fd);
+        return 1;
+    }
+
+    if (startup_ok) {
         g_state.game_started = 1;
+        int start_msg = MSG_START;
+        for (int i = 0; i < MAX_CLIENTS; i++) {
+            if (send_all(g_clients[i], &start_msg, sizeof(start_msg)) < 0) {
+                startup_ok = 0;
+                break;
+            }
+        }
+    }
+
+    if (startup_ok) {
+        for (int i = 0; i < MAX_CLIENTS; i++) {
+            ClientArg *ca = malloc(sizeof(ClientArg));
+            if (ca == NULL) {
+                startup_ok = 0;
+                break;
+            }
+            ca->fd = g_clients[i];
+            ca->role = i;
+            pthread_create(&reader_threads[i], NULL, client_reader, ca);
+        }
+    }
+
+    if (startup_ok) {
+        printf("[Server] Both players ready! Game starting.\n");
+    } else {
+        g_running = 0;
     }
 
     /* ──── Game Loop ──── */

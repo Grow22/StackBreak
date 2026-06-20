@@ -16,6 +16,7 @@
 #include <pthread.h>
 #include <fcntl.h>
 #include <time.h>
+#include <limits.h>
 
 /* ──────────── Board ──────────── */
 #define BOARD_W  10
@@ -28,6 +29,8 @@
 #define MAX_EFFECTS  12
 #define MAX_PARTICLES 48
 #define PIECE_QUEUE_DEPTH 3
+#define MAX_NAME_LEN 16
+#define MAX_RANKINGS 10
 
 #define EFFECT_NONE      0
 #define EFFECT_BOMB      1
@@ -157,6 +160,17 @@ typedef struct {
     int item_type;
 } QueuedPiece;
 
+typedef struct {
+    char player1[MAX_NAME_LEN];
+    char player2[MAX_NAME_LEN];
+    int score;
+} ScoreEntry;
+
+typedef struct {
+    int count;
+    ScoreEntry entries[MAX_RANKINGS];
+} ScoreTable;
+
 /* ──────────── Game State ──────────── */
 typedef struct {
     int board[BOARD_H][BOARD_W];   /* 0=empty, 1-7=block color */
@@ -183,6 +197,7 @@ typedef struct {
     int level;
     int lines;
     int highscore;
+    int new_highscore;
 
     int game_over;
     int game_started;  /* both players connected? */
@@ -214,6 +229,9 @@ typedef struct {
 #define MSG_INPUT  1
 #define MSG_STATE  2
 #define MSG_ROLE   3
+#define MSG_WELCOME 4
+#define MSG_PLAYER_NAME 5
+#define MSG_START 6
 
 /* client → server */
 typedef struct {
@@ -226,6 +244,17 @@ typedef struct {
     int type;   /* MSG_ROLE */
     int role;   /* 0=tetris player, 1=character player */
 } MsgRole;
+
+typedef struct {
+    int type;
+    int role;
+    ScoreTable rankings;
+} MsgWelcome;
+
+typedef struct {
+    int type;
+    char name[MAX_NAME_LEN];
+} MsgPlayerName;
 
 /* server → client (game state) - sent as raw GameState struct */
 
@@ -269,6 +298,22 @@ static inline int recv_all(int fd, void *buf, size_t len) {
         got += n;
     }
     return 0;
+}
+
+static inline int calculate_final_score(int attacker_hp,
+                                        int defscore, int atkscore) {
+    int winner_score = attacker_hp <= 0 ? defscore : atkscore;
+    int opponent_score = attacker_hp <= 0 ? atkscore : defscore;
+    if (winner_score <= 0) winner_score = 10;
+    if (opponent_score < 0) opponent_score = 0;
+
+    long long final_score = (long long)winner_score * 2;
+    if (final_score > INT_MAX) final_score = INT_MAX;
+    while (final_score < opponent_score && final_score < INT_MAX) {
+        final_score *= 2;
+        if (final_score > INT_MAX) final_score = INT_MAX;
+    }
+    return (int)final_score;
 }
 
 #endif /* COMMON_H */

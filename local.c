@@ -17,10 +17,13 @@ static volatile sig_atomic_t g_running = 1;
 static int g_is_paused = 0;
 static int g_score_animated = 0;	// Whether ended showing final score animation
 static int g_highscore = 0;
+static ScoreTable g_score_table;
+static char g_player_name[MAX_NAME_LEN] = "Guest";
 static int drop_counter = 0;
 static int gravity_counter = 0;
 
 #define HIGHSCORE_FILE "highscore.dat"
+#define SCORE_FILE "local_scores.dat"
 #define CELL_W 2
 #define HARD_DROP_COOLDOWN_TICKS 90
 #define SOFT_DROP_COOLDOWN_TICKS 4		// 소프트드롭 쿨타임 ~0.13초
@@ -101,22 +104,106 @@ static void trigger_shake(int intensity, int dur) {
 static void handle_signal(int sig) { (void)sig; g_running = 0; }
 
 /* ──────────── High Score ──────────── */
-static void load_highscore(void) {
-    struct stat st;
-    if (stat(HIGHSCORE_FILE, &st) < 0) { g_highscore = 0; return; }
-    int fd = open(HIGHSCORE_FILE, O_RDONLY);
-    if (fd < 0) { g_highscore = 0; return; }
-    if (read(fd, &g_highscore, sizeof(int)) < 0) g_highscore = 0;
+static void copy_score_name(char dst[MAX_NAME_LEN], const char *src) {
+    strncpy(dst, src, MAX_NAME_LEN - 1);
+    dst[MAX_NAME_LEN - 1] = '\0';
+}
+
+static void sort_score_table(void) {
+    for (int i = 1; i < g_score_table.count; i++) {
+        ScoreEntry entry = g_score_table.entries[i];
+        int j = i - 1;
+        while (j >= 0 && g_score_table.entries[j].score < entry.score) {
+            g_score_table.entries[j + 1] = g_score_table.entries[j];
+            j--;
+        }
+        g_score_table.entries[j + 1] = entry;
+    }
+}
+
+static void refresh_highscore(void) {
+    g_highscore = g_score_table.count > 0
+        ? g_score_table.entries[0].score : 0;
+}
+
+static void write_score_table(void) {
+    int fd = open(SCORE_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) return;
+    if (write(fd, &g_score_table, sizeof(g_score_table)) < 0) { /* ignore */ }
     close(fd);
 }
 
+static void load_highscore(void) {
+    memset(&g_score_table, 0, sizeof(g_score_table));
+
+    int fd = open(SCORE_FILE, O_RDONLY);
+    if (fd >= 0) {
+        ssize_t n = read(fd, &g_score_table, sizeof(g_score_table));
+        close(fd);
+        if (n != (ssize_t)sizeof(g_score_table) ||
+            g_score_table.count < 0 || g_score_table.count > MAX_RANKINGS)
+            memset(&g_score_table, 0, sizeof(g_score_table));
+    }
+
+    if (g_score_table.count == 0) {
+        int legacy_score = 0;
+        fd = open(HIGHSCORE_FILE, O_RDONLY);
+        if (fd >= 0) {
+            if (read(fd, &legacy_score, sizeof(legacy_score)) == sizeof(legacy_score) &&
+                legacy_score > 0) {
+                copy_score_name(g_score_table.entries[0].player1, "Previous");
+                g_score_table.entries[0].player2[0] = '\0';
+                g_score_table.entries[0].score = legacy_score;
+                g_score_table.count = 1;
+            }
+            close(fd);
+        }
+    }
+
+    for (int i = 0; i < g_score_table.count; i++) {
+        g_score_table.entries[i].player1[MAX_NAME_LEN - 1] = '\0';
+        g_score_table.entries[i].player2[MAX_NAME_LEN - 1] = '\0';
+    }
+    sort_score_table();
+    refresh_highscore();
+}
+
 static void save_highscore(void) {
-    if (g_state.score <= g_highscore) return;
-    g_highscore = g_state.score;
-    int fd = open(HIGHSCORE_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0) return;
-    if (write(fd, &g_highscore, sizeof(int)) < 0) { /* ignore */ }
-    close(fd);
+    if (!g_state.game_over) return;
+    g_state.score = calculate_final_score(g_state.attacker_hp,
+                                          g_state.defscore,
+                                          g_state.atkscore);
+    if (g_state.score <= 0) return;
+    int previous_highscore = g_highscore;
+
+    int index = -1;
+    for (int i = 0; i < g_score_table.count; i++) {
+        if (strcmp(g_score_table.entries[i].player1, g_player_name) == 0 &&
+            g_score_table.entries[i].player2[0] == '\0') {
+            index = i;
+            break;
+        }
+    }
+
+    if (index >= 0) {
+        if (g_state.score <= g_score_table.entries[index].score) return;
+    } else if (g_score_table.count < MAX_RANKINGS) {
+        index = g_score_table.count++;
+    } else {
+        sort_score_table();
+        if (g_state.score <= g_score_table.entries[MAX_RANKINGS - 1].score)
+            return;
+        index = MAX_RANKINGS - 1;
+    }
+
+    copy_score_name(g_score_table.entries[index].player1, g_player_name);
+    g_score_table.entries[index].player2[0] = '\0';
+    g_score_table.entries[index].score = g_state.score;
+    sort_score_table();
+    refresh_highscore();
+    if (g_state.score > previous_highscore)
+        g_state.new_highscore = 1;
+    write_score_table();
 }
 
 /* ──────────── Random Piece ──────────── */
@@ -622,6 +709,7 @@ static void try_jump(void) {
 static void init_game(void) {
     memset(&g_state, 0, sizeof(g_state));
     srand(time(NULL));
+    g_score_animated = 0;
     set_current_piece(make_queued_piece());
     init_piece_queue();
     
@@ -1048,6 +1136,67 @@ static void draw_particles(int sy, int sx) {
 int my, mx;
 int bh, bw;
 int sy, sx;
+
+#define GAME_OVER_BOX_W 37
+#define GAME_OVER_BOX_H 9
+
+static void draw_game_over_text(int top, int left, int row,
+                                const char *text, int attr) {
+    int inner_w = GAME_OVER_BOX_W - 2;
+    int len = (int)strlen(text);
+    if (len > inner_w) len = inner_w;
+    int x = left + 1 + (inner_w - len) / 2;
+    attron(attr);
+    mvprintw(top + row, x, "%.*s", inner_w, text);
+    attroff(attr);
+}
+
+static void draw_game_over_panel(int rows, int cols, const char *winner,
+                                 int score, int highscore,
+                                 int new_highscore, int show_score) {
+    int top = (rows - GAME_OVER_BOX_H) / 2;
+    int left = (cols - GAME_OVER_BOX_W) / 2;
+
+    attron(COLOR_PAIR(COLOR_BG));
+    for (int row = 0; row < GAME_OVER_BOX_H; row++)
+        mvhline(top + row, left, ' ', GAME_OVER_BOX_W);
+    attroff(COLOR_PAIR(COLOR_BG));
+
+    int border_attr = COLOR_PAIR(21) | A_BOLD;
+    attron(border_attr);
+    mvaddch(top, left, '+');
+    mvhline(top, left + 1, '-', GAME_OVER_BOX_W - 2);
+    mvaddch(top, left + GAME_OVER_BOX_W - 1, '+');
+    mvvline(top + 1, left, '|', GAME_OVER_BOX_H - 2);
+    mvvline(top + 1, left + GAME_OVER_BOX_W - 1, '|', GAME_OVER_BOX_H - 2);
+    mvaddch(top + GAME_OVER_BOX_H - 1, left, '+');
+    mvhline(top + GAME_OVER_BOX_H - 1, left + 1, '-', GAME_OVER_BOX_W - 2);
+    mvaddch(top + GAME_OVER_BOX_H - 1,
+            left + GAME_OVER_BOX_W - 1, '+');
+    attroff(border_attr);
+
+    draw_game_over_text(top, left, 1, "GAME OVER", border_attr);
+    draw_game_over_text(top, left, 3, winner,
+                        COLOR_PAIR(COLOR_BORDER) | A_BOLD);
+    if (show_score) {
+        char score_text[32];
+        snprintf(score_text, sizeof(score_text), "SCORE  %d", score);
+        draw_game_over_text(top, left, 4, score_text,
+                            COLOR_PAIR(COLOR_BORDER) | A_BOLD);
+    }
+
+    char record_text[32];
+    if (new_highscore)
+        snprintf(record_text, sizeof(record_text), "NEW HIGH SCORE!");
+    else
+        snprintf(record_text, sizeof(record_text), "HIGH SCORE  %d", highscore);
+    draw_game_over_text(top, left, 5, record_text,
+                        COLOR_PAIR(new_highscore ? COLOR_COMBO : COLOR_BORDER) |
+                        A_BOLD);
+    draw_game_over_text(top, left, 7, "[R] Restart     [Q] Quit",
+                        COLOR_PAIR(COLOR_BORDER));
+}
+
 static void render(void) {
     getmaxyx(stdscr,my,mx);
     bh = BOARD_H+2, bw = BOARD_W*CELL_W+2;
@@ -1338,61 +1487,42 @@ static void render(void) {
 
     /* Game Over */
     if (g_state.game_over) {
-        int cy=my/2, cx=mx/2-11;
-        attron(A_BOLD|COLOR_PAIR(5));
-        mvprintw(cy-2,cx,"                       ");
-        mvprintw(cy-1,cx,"   ==================  ");
-        mvprintw(cy,  cx,"     GAME  OVER !      ");
+        const char *winner = g_state.attacker_hp<=0
+            ? "DEFENDER WINS!" : "ATTACKER WINS!";
 
 	if (!g_score_animated) {
-		int is_multiscore = 0;
-		char loser;
-	        if (g_state.attacker_hp<=0) {
-	            mvprintw(cy+1,cx,"    DEFENDER WINS!     ");
-		    loser = 'A';
-		    g_state.score = g_state.defscore;
-		    if (g_state.score < g_state.atkscore)
-			    is_multiscore = 1;
-		}
-	        else {
-		    g_state.atkscore = (g_state.atkscore == 0) ? 10 : g_state.atkscore;
-	            mvprintw(cy+1,cx,"    ATTACKER WINS!     ");
-		    loser = 'D';
-		    g_state.score = g_state.atkscore;
-		    if (g_state.score < g_state.defscore)
-			    is_multiscore = 1;
-		}
-		mvprintw(cy+2,cx,"    Score: %-8d    ",g_state.score);
+		int final_score = calculate_final_score(g_state.attacker_hp,
+		                                        g_state.defscore,
+		                                        g_state.atkscore);
+		g_state.score = g_state.attacker_hp<=0
+		    ? g_state.defscore : g_state.atkscore;
+		if (g_state.score <= 0) g_state.score = 10;
+		draw_game_over_panel(my, mx, winner, g_state.score,
+		                     g_highscore, g_state.new_highscore, 1);
 		refresh();
 		usleep(1000000);
-		g_state.score *= 2;
-		while (is_multiscore) {
-			mvprintw(cy+2,cx,"    Score: %-8d    ",g_state.score);
+		while (g_state.score < final_score) {
+			g_state.score = g_state.score > final_score / 2
+			    ? final_score : g_state.score * 2;
+			draw_game_over_panel(my, mx, winner, g_state.score,
+			                     g_highscore, g_state.new_highscore, 1);
 			refresh();
-			usleep(500000);
-			g_state.score *= 2;
-			switch (loser) {
-				case 'A':
-					if (g_state.score >= g_state.atkscore)
-						is_multiscore = 0;
-					break;
-				case 'D':
-					if (g_state.score >= g_state.defscore)
-						is_multiscore = 0;
-					break;
-			}
+			if (g_state.score < final_score) usleep(500000);
 		}
 		
-		mvprintw(cy+2,cx,"    Score: %-8d    ",g_state.score);
+		draw_game_over_panel(my, mx, winner, g_state.score,
+		                     g_highscore, g_state.new_highscore, 1);
 		refresh();
 		usleep(500000);
 	
 		for (int blink = 0; blink < 3; blink++) {
-			mvprintw(cy+2,cx,"               ");
+			draw_game_over_panel(my, mx, winner, g_state.score,
+			                     g_highscore, g_state.new_highscore, 0);
 			refresh();
 			usleep(100000);
 		
-			mvprintw(cy+2,cx,"    Score: %-8d    ",g_state.score);
+			draw_game_over_panel(my, mx, winner, g_state.score,
+			                     g_highscore, g_state.new_highscore, 1);
 			refresh();
 			usleep(250000);
 		}
@@ -1401,20 +1531,10 @@ static void render(void) {
 		g_shake_intensity = 0;
 
 		g_score_animated = 1;
+		save_highscore();
 	}
-	else {
-		if (g_state.attacker_hp <= 0) {	
-	            mvprintw(cy+1,cx,"    DEFENDER WINS!     ");
-		} else {
-	            mvprintw(cy+1,cx,"    ATTACKER WINS!     ");
-		}
-	}
-
-	mvprintw(cy+2,cx,"    Score: %-8d    ",g_state.score);
-        mvprintw(cy+3,cx,"   R=Restart  Q=Quit   ");
-        mvprintw(cy+4,cx,"   ==================  ");
-        mvprintw(cy+5,cx,"                       ");
-        attroff(A_BOLD|COLOR_PAIR(5));
+	draw_game_over_panel(my, mx, winner, g_state.score,
+	                     g_highscore, g_state.new_highscore, 1);
     }
 
     /* ── BOMB! overlay (drawn LAST = topmost layer) ── */
@@ -1693,6 +1813,72 @@ static void handle_input(void) {
     }
 }
 
+static void show_start_screen(void) {
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
+    int height = 22;
+    int width = 58;
+    int start_y = (rows - height) / 2;
+    int start_x = (cols - width) / 2;
+    if (start_y < 0) start_y = 0;
+    if (start_x < 0) start_x = 0;
+
+    WINDOW *win = newwin(height, width, start_y, start_x);
+    keypad(win, TRUE);
+    wtimeout(win, -1);
+    box(win, 0, 0);
+
+    wattron(win, A_BOLD);
+    mvwprintw(win, 1, 18, "LOCAL LEADERBOARD");
+    wattroff(win, A_BOLD);
+    mvwprintw(win, 2, 4, "High Score: %d", g_highscore);
+    mvwprintw(win, 4, 4, "Rank  Player                         Score");
+
+    for (int i = 0; i < MAX_RANKINGS; i++) {
+        if (i < g_score_table.count) {
+            mvwprintw(win, 5 + i, 4, "%2d.   %-28.28s %8d",
+                      i + 1,
+                      g_score_table.entries[i].player1,
+                      g_score_table.entries[i].score);
+        } else {
+            mvwprintw(win, 5 + i, 4, "%2d.   %-28s %8s",
+                      i + 1, "---", "---");
+        }
+    }
+
+    mvwprintw(win, 17, 4, "Name: ");
+    mvwprintw(win, 19, 4, "Enter your name and press Enter to start");
+    wmove(win, 17, 10);
+    wrefresh(win);
+
+    nodelay(stdscr, FALSE);
+    echo();
+    curs_set(1);
+    char input[MAX_NAME_LEN] = {0};
+    int input_result;
+    do {
+        input[0] = '\0';
+        wmove(win, 17, 10);
+        whline(win, ' ', MAX_NAME_LEN - 1);
+        wmove(win, 17, 10);
+        wrefresh(win);
+        input_result = wgetnstr(win, input, MAX_NAME_LEN - 1);
+        if (input_result == ERR) napms(10);
+    } while (g_running && (input_result == ERR || input[0] == '\0'));
+    noecho();
+    curs_set(0);
+    nodelay(stdscr, TRUE);
+
+    if (input[0] != '\0')
+        copy_score_name(g_player_name, input);
+    else
+        copy_score_name(g_player_name, "Guest");
+
+    delwin(win);
+    clear();
+    refresh();
+}
+
 /* ──────────── Main ──────────── */
 int main(void) {
     struct sigaction sa;
@@ -1730,6 +1916,8 @@ int main(void) {
 	    }
         }
     }
+
+    show_start_screen();
 
     getmaxyx(stdscr,my,mx);
     bh = BOARD_H+2, bw = BOARD_W*CELL_W+2;

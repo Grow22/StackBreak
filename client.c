@@ -87,6 +87,102 @@ static void init_colors(void) {
     }
 }
 
+static void show_start_screen(const ScoreTable *rankings,
+                              char player_name[MAX_NAME_LEN]) {
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
+    int height = 22;
+    int width = 64;
+    int start_y = (rows - height) / 2;
+    int start_x = (cols - width) / 2;
+    if (start_y < 0) start_y = 0;
+    if (start_x < 0) start_x = 0;
+
+    WINDOW *win = newwin(height, width, start_y, start_x);
+    keypad(win, TRUE);
+    wtimeout(win, -1);
+    box(win, 0, 0);
+
+    wattron(win, A_BOLD);
+    mvwprintw(win, 1, 21, "MULTI LEADERBOARD");
+    wattroff(win, A_BOLD);
+    mvwprintw(win, 2, 4, "Role: %s",
+              g_role == 0 ? "TETRIS" : "CHARACTER");
+    mvwprintw(win, 3, 4, "High Score: %d",
+              rankings->count > 0 ? rankings->entries[0].score : 0);
+
+    for (int i = 0; i < MAX_RANKINGS; i++) {
+        if (i < rankings->count) {
+            char team[MAX_NAME_LEN * 2 + 4];
+            if (rankings->entries[i].player2[0] != '\0')
+                snprintf(team, sizeof(team), "%s / %s",
+                         rankings->entries[i].player1,
+                         rankings->entries[i].player2);
+            else
+                snprintf(team, sizeof(team), "%s",
+                         rankings->entries[i].player1);
+            mvwprintw(win, 5 + i, 4, "%2d. %-36.36s %8d",
+                      i + 1, team, rankings->entries[i].score);
+        } else {
+            mvwprintw(win, 5 + i, 4, "%2d. %-36s %8s",
+                      i + 1, "---", "---");
+        }
+    }
+
+    mvwprintw(win, 17, 4, "Name: ");
+    mvwprintw(win, 19, 4, "Enter your name and press Enter to join");
+    wmove(win, 17, 10);
+    wrefresh(win);
+
+    nodelay(stdscr, FALSE);
+    echo();
+    curs_set(1);
+    int input_result;
+    do {
+        player_name[0] = '\0';
+        wmove(win, 17, 10);
+        whline(win, ' ', MAX_NAME_LEN - 1);
+        wmove(win, 17, 10);
+        wrefresh(win);
+        input_result = wgetnstr(win, player_name, MAX_NAME_LEN - 1);
+        if (input_result == ERR) napms(10);
+    } while (g_running && (input_result == ERR || player_name[0] == '\0'));
+    noecho();
+    curs_set(0);
+    nodelay(stdscr, TRUE);
+
+    if (g_running && player_name[0] == '\0')
+        strncpy(player_name, "Guest", MAX_NAME_LEN);
+    player_name[MAX_NAME_LEN - 1] = '\0';
+
+    delwin(win);
+    clear();
+    refresh();
+}
+
+static void show_lobby_waiting_screen(const char *player_name) {
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
+    const int height = 7;
+    const int width = 54;
+    int start_y = (rows - height) / 2;
+    int start_x = (cols - width) / 2;
+    if (start_y < 0) start_y = 0;
+    if (start_x < 0) start_x = 0;
+
+    clear();
+    WINDOW *win = newwin(height, width, start_y, start_x);
+    box(win, 0, 0);
+    wattron(win, A_BOLD);
+    mvwprintw(win, 1, 18, "MULTIPLAYER LOBBY");
+    wattroff(win, A_BOLD);
+    mvwprintw(win, 3, 4, "Name: %-15.15s  Role: %s", player_name,
+              g_role == 0 ? "TETRIS" : "CHARACTER");
+    mvwprintw(win, 5, 8, "Ready. Waiting for the other player...");
+    wrefresh(win);
+    delwin(win);
+}
+
 static int piece_color(int type) {
     if (type >= 1 && type <= 7) return type;
     return COLOR_BG;
@@ -481,6 +577,66 @@ static int g_invader_anim = 0;
 static int g_score_animated = 0;
 static int g_gameover_score = 0;
 
+#define GAME_OVER_BOX_W 37
+#define GAME_OVER_BOX_H 9
+
+static void draw_game_over_text(int top, int left, int row,
+                                const char *text, int attr) {
+    int inner_w = GAME_OVER_BOX_W - 2;
+    int len = (int)strlen(text);
+    if (len > inner_w) len = inner_w;
+    int x = left + 1 + (inner_w - len) / 2;
+    attron(attr);
+    mvprintw(top + row, x, "%.*s", inner_w, text);
+    attroff(attr);
+}
+
+static void draw_game_over_panel(int rows, int cols, const char *winner,
+                                 int score, int highscore,
+                                 int new_highscore, int show_score) {
+    int top = (rows - GAME_OVER_BOX_H) / 2;
+    int left = (cols - GAME_OVER_BOX_W) / 2;
+
+    attron(COLOR_PAIR(COLOR_BG));
+    for (int row = 0; row < GAME_OVER_BOX_H; row++)
+        mvhline(top + row, left, ' ', GAME_OVER_BOX_W);
+    attroff(COLOR_PAIR(COLOR_BG));
+
+    int border_attr = COLOR_PAIR(21) | A_BOLD;
+    attron(border_attr);
+    mvaddch(top, left, '+');
+    mvhline(top, left + 1, '-', GAME_OVER_BOX_W - 2);
+    mvaddch(top, left + GAME_OVER_BOX_W - 1, '+');
+    mvvline(top + 1, left, '|', GAME_OVER_BOX_H - 2);
+    mvvline(top + 1, left + GAME_OVER_BOX_W - 1, '|', GAME_OVER_BOX_H - 2);
+    mvaddch(top + GAME_OVER_BOX_H - 1, left, '+');
+    mvhline(top + GAME_OVER_BOX_H - 1, left + 1, '-', GAME_OVER_BOX_W - 2);
+    mvaddch(top + GAME_OVER_BOX_H - 1,
+            left + GAME_OVER_BOX_W - 1, '+');
+    attroff(border_attr);
+
+    draw_game_over_text(top, left, 1, "GAME OVER", border_attr);
+    draw_game_over_text(top, left, 3, winner,
+                        COLOR_PAIR(COLOR_BORDER) | A_BOLD);
+    if (show_score) {
+        char score_text[32];
+        snprintf(score_text, sizeof(score_text), "SCORE  %d", score);
+        draw_game_over_text(top, left, 4, score_text,
+                            COLOR_PAIR(COLOR_BORDER) | A_BOLD);
+    }
+
+    char record_text[32];
+    if (new_highscore)
+        snprintf(record_text, sizeof(record_text), "NEW HIGH SCORE!");
+    else
+        snprintf(record_text, sizeof(record_text), "HIGH SCORE  %d", highscore);
+    draw_game_over_text(top, left, 5, record_text,
+                        COLOR_PAIR(new_highscore ? COLOR_COMBO : COLOR_BORDER) |
+                        A_BOLD);
+    draw_game_over_text(top, left, 7, "[R] Restart     [Q] Quit",
+                        COLOR_PAIR(COLOR_BORDER));
+}
+
 static void render(void) {
     pthread_mutex_lock(&g_lock);
     GameState st = g_state;
@@ -816,75 +972,51 @@ static void render(void) {
     }
 
     if (st.game_over) {
-        int cy = max_y / 2;
-        int cx = max_x / 2 - 11;
-        attron(A_BOLD | COLOR_PAIR(COLOR_PIECE_Z));
-        mvprintw(cy - 2, cx, "                       ");
-        mvprintw(cy - 1, cx, "   ==================  ");
-        mvprintw(cy,     cx, "     GAME  OVER !      ");
+        const char *winner = st.attacker_hp <= 0
+            ? "DEFENDER WINS!" : "ATTACKER WINS!";
         if (!g_score_animated) {
-            int is_multiscore = 0;
-            int display_score;
-            char loser;
-            if (st.attacker_hp <= 0) {
-                mvprintw(cy + 1, cx, "    DEFENDER WINS!     ");
-                loser = 'A';
-                display_score = st.defscore;
-                if (display_score < st.atkscore)
-                    is_multiscore = 1;
-            } else {
-                int atk_score = (st.atkscore == 0) ? 10 : st.atkscore;
-                mvprintw(cy + 1, cx, "    ATTACKER WINS!     ");
-                loser = 'D';
-                display_score = atk_score;
-                if (display_score < st.defscore)
-                    is_multiscore = 1;
-            }
+            int final_score = calculate_final_score(st.attacker_hp,
+                                                    st.defscore,
+                                                    st.atkscore);
+            int display_score = st.attacker_hp <= 0
+                ? st.defscore : st.atkscore;
+            if (display_score <= 0) display_score = 10;
 
-            mvprintw(cy + 2, cx, "    Score: %-8d    ", display_score);
+            draw_game_over_panel(max_y, max_x, winner, display_score,
+                                 st.highscore, st.new_highscore, 1);
             refresh();
             usleep(1000000);
-            display_score *= 2;
-
-            while (is_multiscore) {
-                mvprintw(cy + 2, cx, "    Score: %-8d    ", display_score);
+            while (display_score < final_score) {
+                display_score = display_score > final_score / 2
+                    ? final_score : display_score * 2;
+                draw_game_over_panel(max_y, max_x, winner, display_score,
+                                     st.highscore, st.new_highscore, 1);
                 refresh();
-                usleep(500000);
-                display_score *= 2;
-                if (loser == 'A') {
-                    if (display_score >= st.atkscore)
-                        is_multiscore = 0;
-                } else if (display_score >= st.defscore) {
-                    is_multiscore = 0;
-                }
+                if (display_score < final_score) usleep(500000);
             }
 
-            mvprintw(cy + 2, cx, "    Score: %-8d    ", display_score);
+            draw_game_over_panel(max_y, max_x, winner, display_score,
+                                 st.highscore, st.new_highscore, 1);
             refresh();
             usleep(500000);
 
             for (int blink = 0; blink < 3; blink++) {
-                mvprintw(cy + 2, cx, "               ");
+                draw_game_over_panel(max_y, max_x, winner, display_score,
+                                     st.highscore, st.new_highscore, 0);
                 refresh();
                 usleep(100000);
-                mvprintw(cy + 2, cx, "    Score: %-8d    ", display_score);
+                draw_game_over_panel(max_y, max_x, winner, display_score,
+                                     st.highscore, st.new_highscore, 1);
                 refresh();
                 usleep(250000);
             }
 
             g_gameover_score = display_score;
             g_score_animated = 1;
-        } else if (st.attacker_hp <= 0) {
-            mvprintw(cy + 1, cx, "    DEFENDER WINS!     ");
-        } else {
-            mvprintw(cy + 1, cx, "    ATTACKER WINS!     ");
         }
-        mvprintw(cy + 2, cx, "    Score: %-8d    ",
-                 g_score_animated ? g_gameover_score : st.score);
-        mvprintw(cy + 3, cx, "   R=Restart  Q=Quit   ");
-        mvprintw(cy + 4, cx, "   ==================  ");
-        mvprintw(cy + 5, cx, "                       ");
-        attroff(A_BOLD | COLOR_PAIR(COLOR_PIECE_Z));
+        draw_game_over_panel(max_y, max_x, winner,
+                             g_score_animated ? g_gameover_score : st.score,
+                             st.highscore, st.new_highscore, 1);
     }
 
     draw_bomb_overlay(&st, max_y, max_x);
@@ -968,19 +1100,18 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    /* receive role assignment */
-    MsgRole role_msg;
-    if (recv_all(g_sock, &role_msg, sizeof(MsgRole)) < 0) {
-        fprintf(stderr, "Failed to receive role\n");
+    /* receive role and leaderboard */
+    MsgWelcome welcome;
+    if (recv_all(g_sock, &welcome, sizeof(welcome)) < 0 ||
+        welcome.type != MSG_WELCOME) {
+        fprintf(stderr, "Failed to receive welcome data\n");
         close(g_sock);
         return 1;
     }
-    g_role = role_msg.role;
+    g_role = welcome.role;
     printf("Connected! Your role: %s\n",
            g_role == 0 ? "TETRIS Player (WASD + Space)" :
                          "CHARACTER Player (Arrows + Z/X)");
-    printf("Starting in 2 seconds...\n");
-    sleep(2);
 
     /* init ncurses */
     setlocale(LC_ALL, "");
@@ -1023,6 +1154,39 @@ int main(int argc, char *argv[]) {
 		}
         }
     }
+
+    char player_name[MAX_NAME_LEN] = {0};
+    show_start_screen(&welcome.rankings, player_name);
+
+    if (!g_running) {
+        endwin();
+        close(g_sock);
+        return 0;
+    }
+
+    MsgPlayerName name_msg;
+    memset(&name_msg, 0, sizeof(name_msg));
+    name_msg.type = MSG_PLAYER_NAME;
+    snprintf(name_msg.name, sizeof(name_msg.name), "%s", player_name);
+    if (send_all(g_sock, &name_msg, sizeof(name_msg)) < 0) {
+        endwin();
+        close(g_sock);
+        fprintf(stderr, "Failed to send player name\n");
+        return 1;
+    }
+
+    show_lobby_waiting_screen(player_name);
+
+    int start_msg;
+    if (recv_all(g_sock, &start_msg, sizeof(start_msg)) < 0 ||
+        start_msg != MSG_START) {
+        endwin();
+        close(g_sock);
+        fprintf(stderr, "Failed to receive game start signal\n");
+        return 1;
+    }
+    clear();
+    refresh();
 
     /* start network receiver thread */
     pthread_t net_thread;
