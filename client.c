@@ -1,5 +1,5 @@
 /*
- * client.c - Tetris Co-op Game Client
+ * client.c - Stack and Break Game Client
  *
  * Connects to server, receives game state, renders with ncurses,
  * and sends player input.
@@ -14,7 +14,7 @@
 
 /* Globals */
 static int       g_sock = -1;
-static int       g_role = -1;  /* 0=tetris, 1=character */
+static int       g_role = -1;  /* 0=attacker, 1=defender */
 static GameState g_state;
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static volatile sig_atomic_t g_running = 1;
@@ -28,8 +28,8 @@ static const GameState *g_render_state = NULL;
 #define COLOR_PIECE_Z   5
 #define COLOR_PIECE_J   6
 #define COLOR_PIECE_L   7
-#define COLOR_CHAR      8
-#define COLOR_CHAR_STUN 9
+#define COLOR_DEFENDER      8
+#define COLOR_DEFENDER_STUN 9
 #define COLOR_BORDER    10
 #define COLOR_GHOST     11
 #define COLOR_BG        12
@@ -52,8 +52,8 @@ static void init_colors(void) {
     init_pair(COLOR_PIECE_Z,   COLOR_WHITE,   COLOR_RED);
     init_pair(COLOR_PIECE_J,   COLOR_WHITE,   COLOR_BLUE);
     init_pair(COLOR_PIECE_L,   COLOR_BLACK,   COLOR_WHITE);
-    init_pair(COLOR_CHAR,      COLOR_BLACK,   COLOR_GREEN);
-    init_pair(COLOR_CHAR_STUN, COLOR_WHITE,   COLOR_RED);
+    init_pair(COLOR_DEFENDER,      COLOR_BLACK,   COLOR_GREEN);
+    init_pair(COLOR_DEFENDER_STUN, COLOR_WHITE,   COLOR_RED);
     init_pair(COLOR_BORDER,    COLOR_WHITE,   COLOR_BLACK);
     init_pair(COLOR_GHOST,     COLOR_WHITE,   COLOR_BLACK); /* Fixed ghost color */
     init_pair(COLOR_BG,        COLOR_WHITE,   COLOR_BLACK);
@@ -107,7 +107,7 @@ static void show_start_screen(const ScoreTable *rankings,
     mvwprintw(win, 1, 21, "MULTI LEADERBOARD");
     wattroff(win, A_BOLD);
     mvwprintw(win, 2, 4, "Role: %s",
-              g_role == 0 ? "TETRIS" : "CHARACTER");
+              g_role == 0 ? "ATTACKER" : "DEFENDER");
     mvwprintw(win, 3, 4, "High Score: %d",
               rankings->count > 0 ? rankings->entries[0].score : 0);
 
@@ -177,7 +177,7 @@ static void show_lobby_waiting_screen(const char *player_name) {
     mvwprintw(win, 1, 18, "MULTIPLAYER LOBBY");
     wattroff(win, A_BOLD);
     mvwprintw(win, 3, 4, "Name: %-15.15s  Role: %s", player_name,
-              g_role == 0 ? "TETRIS" : "CHARACTER");
+              g_role == 0 ? "ATTACKER" : "DEFENDER");
     mvwprintw(win, 5, 8, "Ready. Waiting for the other player...");
     wrefresh(win);
     delwin(win);
@@ -304,18 +304,18 @@ static void draw_bomb_prev(int y, int x, int type) {
 
 static int has_ready_bomb(void) {
     const GameState *st = g_render_state;
-    return st->ch.inv_count > 0 && st->ch.inventory[0] == 1;
+    return st->defender.inv_count > 0 && st->defender.inventory[0] == 1;
 }
 
 static int is_bomb_preview(int r, int c) {
     const GameState *st = g_render_state;
     if (st->game_over || !has_ready_bomb())
         return 0;
-    if (r == st->ch.y && c == st->ch.x)
+    if (r == st->defender.y && c == st->defender.x)
         return 0;
 
-    int left = st->ch.x - 2;
-    int top = st->ch.y - 2;
+    int left = st->defender.x - 2;
+    int top = st->defender.y - 2;
 
     return r >= top && r < top + 4 && c >= left && c < left + 4;
 }
@@ -489,17 +489,17 @@ static void draw_invader(int top_y, int left_x, int frame, int stunned, int hit)
     }
 }
 
-static void draw_shield_bubble(int sy, int sx, const Character *ch) {
+static void draw_shield_bubble(int sy, int sx, const Defender *defender) {
     int timer = 0;
-    if (ch->shield_timer > 0)
-        timer = ch->shield_timer;
-    else if (ch->stun_timer == 0 && ch->stun_invuln_timer > 0)
-        timer = ch->stun_invuln_timer;
-    if (timer <= 0 || ch->stun_timer > 0)
+    if (defender->shield_timer > 0)
+        timer = defender->shield_timer;
+    else if (defender->stun_timer == 0 && defender->stun_invuln_timer > 0)
+        timer = defender->stun_invuln_timer;
+    if (timer <= 0 || defender->stun_timer > 0)
         return;
 
-    int cy = sy + 1 + ch->y;
-    int cx = sx + 1 + ch->x * CELL_W;
+    int cy = sy + 1 + defender->y;
+    int cx = sx + 1 + defender->x * CELL_W;
     int attr = COLOR_PAIR(COLOR_SHIELD_FX) | A_BOLD;
     if (timer % 4 < 2)
         attr |= A_REVERSE;
@@ -699,9 +699,9 @@ static void render(void) {
         for (int c = 0; c < BOARD_W; c++) {
             int sy = start_y + 1 + r;
             int sx = start_x + 1 + c * CELL_W;
-            if (r == st.ch.drill_target_y && c == st.ch.drill_target_x &&
-                st.ch.drill_crack_timer > 0) {
-                int phase = ((st.ch.drill_crack_timer - 1) * 4) / 8 + 1;
+            if (r == st.defender.drill_target_y && c == st.defender.drill_target_x &&
+                st.defender.drill_crack_timer > 0) {
+                int phase = ((st.defender.drill_crack_timer - 1) * 4) / 8 + 1;
                 if (phase < 1) phase = 1;
                 if (phase > 4) phase = 4;
                 attron(COLOR_PAIR(COLOR_DRILL_FX) | A_BOLD);
@@ -754,51 +754,51 @@ static void render(void) {
     }
 
     {
-        int cr = st.ch.y, cc = st.ch.x;
+        int cr = st.defender.y, cc = st.defender.x;
         if (cr >= 0 && cr < BOARD_H && cc >= 0 && cc < BOARD_W) {
             int cy = start_y + 1 + cr;
             int cx = start_x + 1 + cc * CELL_W;
             g_pac_anim++;
             int mouth = (g_pac_anim / 6) % 2;
 
-            if (st.ch.stun_timer > 0) {
-                attron(COLOR_PAIR(COLOR_CHAR_STUN) | A_BOLD);
-                mvprintw(cy, cx, (st.ch.stun_timer % 4 < 2) ? "XX" : "xx");
-                attroff(COLOR_PAIR(COLOR_CHAR_STUN) | A_BOLD);
-            } else if (st.ch.carrying) {
-                attron(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
-                if (st.ch.facing == 1) mvprintw(cy, cx, "o]");
-                else if (st.ch.facing == -1) mvprintw(cy, cx, "[o");
+            if (st.defender.stun_timer > 0) {
+                attron(COLOR_PAIR(COLOR_DEFENDER_STUN) | A_BOLD);
+                mvprintw(cy, cx, (st.defender.stun_timer % 4 < 2) ? "XX" : "xx");
+                attroff(COLOR_PAIR(COLOR_DEFENDER_STUN) | A_BOLD);
+            } else if (st.defender.carrying) {
+                attron(COLOR_PAIR(COLOR_DEFENDER) | A_BOLD);
+                if (st.defender.facing == 1) mvprintw(cy, cx, "o]");
+                else if (st.defender.facing == -1) mvprintw(cy, cx, "[o");
                 else mvprintw(cy, cx, "oo");
-                attroff(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
-            } else if (st.ch.drill_timer > 0) {
+                attroff(COLOR_PAIR(COLOR_DEFENDER) | A_BOLD);
+            } else if (st.defender.drill_timer > 0) {
                 attron(COLOR_PAIR(COLOR_DRILL_FX) | A_BOLD);
-                if (st.ch.facing == 1) mvprintw(cy, cx, ">>");
-                else if (st.ch.facing == -1) mvprintw(cy, cx, "<<");
+                if (st.defender.facing == 1) mvprintw(cy, cx, ">>");
+                else if (st.defender.facing == -1) mvprintw(cy, cx, "<<");
                 else mvprintw(cy, cx, "vv");
                 attroff(COLOR_PAIR(COLOR_DRILL_FX) | A_BOLD);
             } else {
-                attron(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
+                attron(COLOR_PAIR(COLOR_DEFENDER) | A_BOLD);
                 if (mouth) {
-                    if (st.ch.facing == 1) mvprintw(cy, cx, "o>");
-                    else if (st.ch.facing == -1) mvprintw(cy, cx, "<o");
+                    if (st.defender.facing == 1) mvprintw(cy, cx, "o>");
+                    else if (st.defender.facing == -1) mvprintw(cy, cx, "<o");
                     else mvprintw(cy, cx, "oo");
                 } else {
                     mvprintw(cy, cx, "oo");
                 }
-                attroff(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
+                attroff(COLOR_PAIR(COLOR_DEFENDER) | A_BOLD);
             }
-            draw_shield_bubble(start_y, start_x, &st.ch);
+            draw_shield_bubble(start_y, start_x, &st.defender);
         }
     }
 
-    attron(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
+    attron(COLOR_PAIR(COLOR_DEFENDER) | A_BOLD);
     for (int i = 0; i < st.num_bullets; i++) {
         int r = st.bullets[i][1], c = st.bullets[i][0];
         if (r >= -4 && r < BOARD_H && c >= 0 && c < BOARD_W)
             mvprintw(start_y + 1 + r, start_x + 1 + c * CELL_W, "^^");
     }
-    attroff(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
+    attroff(COLOR_PAIR(COLOR_DEFENDER) | A_BOLD);
 
     if (st.attacker_hp > 0) {
         g_invader_anim++;
@@ -817,7 +817,7 @@ static void render(void) {
     if (panel_y < 0) panel_y = 0;
 
     attron(A_BOLD);
-    mvprintw(panel_y++, panel_x, "TETRIS VS");
+    mvprintw(panel_y++, panel_x, "STACK AND BREAK");
     attroff(A_BOLD);
     mvprintw(panel_y++, panel_x, "Level: %d", st.level);
     mvprintw(panel_y++, panel_x, "Lines: %d", st.lines);
@@ -852,10 +852,10 @@ static void render(void) {
 
     mvprintw(panel_y++, panel_x, "--- Attacker ---");
     if (st.attacker_stun_timer > 0) {
-        attron(COLOR_PAIR(COLOR_CHAR_STUN) | A_BOLD);
+        attron(COLOR_PAIR(COLOR_DEFENDER_STUN) | A_BOLD);
         mvprintw(panel_y++, panel_x, "STUNNED! %.1fs",
                  ticks_to_sec(st.attacker_stun_timer));
-        attroff(COLOR_PAIR(COLOR_CHAR_STUN) | A_BOLD);
+        attroff(COLOR_PAIR(COLOR_DEFENDER_STUN) | A_BOLD);
     } else {
         mvprintw(panel_y++, panel_x, "Status: OK");
     }
@@ -873,12 +873,12 @@ static void render(void) {
     panel_y++;
 
     mvprintw(panel_y++, panel_x, "--- Defender ---");
-    if (st.ch.stun_timer > 0)
+    if (st.defender.stun_timer > 0)
         mvprintw(panel_y++, panel_x, "STUNNED! %.1fs",
-                 ticks_to_sec(st.ch.stun_timer));
-    else if (st.ch.stun_invuln_timer > 0)
+                 ticks_to_sec(st.defender.stun_timer));
+    else if (st.defender.stun_invuln_timer > 0)
         mvprintw(panel_y++, panel_x, "INVULN! %.1fs",
-                 ticks_to_sec(st.ch.stun_invuln_timer));
+                 ticks_to_sec(st.defender.stun_invuln_timer));
     else
         mvprintw(panel_y++, panel_x, "Status: OK");
 
@@ -887,7 +887,7 @@ static void render(void) {
         const char *empty = "  Empty";
         int slot_w = 11;
         for (int slot = 0; slot < 3; slot++) {
-            int inv = (slot < st.ch.inv_count) ? st.ch.inventory[slot] : 0;
+            int inv = (slot < st.defender.inv_count) ? st.defender.inventory[slot] : 0;
             const char *label = (inv > 0 && inv <= 4) ? items[inv] : empty;
             mvprintw(panel_y, panel_x + slot * slot_w, "[");
             mvprintw(panel_y, panel_x + slot * slot_w + 1, "%s", label);
@@ -896,30 +896,30 @@ static void render(void) {
         panel_y++;
     }
 
-    if (st.ch.shield_timer > 0) {
+    if (st.defender.shield_timer > 0) {
         attron(COLOR_PAIR(COLOR_SHIELD_FX) | A_BOLD);
         mvprintw(panel_y++, panel_x, "[ SHIELD %.1fs ]",
-                 ticks_to_sec(st.ch.shield_timer));
+                 ticks_to_sec(st.defender.shield_timer));
         attroff(COLOR_PAIR(COLOR_SHIELD_FX) | A_BOLD);
     }
-    if (st.ch.drill_timer > 0) {
+    if (st.defender.drill_timer > 0) {
         attron(COLOR_PAIR(COLOR_DRILL_FX) | A_BOLD);
         mvprintw(panel_y++, panel_x, "[ DRILL  %.1fs ]",
-                 ticks_to_sec(st.ch.drill_timer));
+                 ticks_to_sec(st.defender.drill_timer));
         attroff(COLOR_PAIR(COLOR_DRILL_FX) | A_BOLD);
     }
-    mvprintw(panel_y++, panel_x, "Carry: %s", st.ch.carrying ? "Block" : "None");
+    mvprintw(panel_y++, panel_x, "Carry: %s", st.defender.carrying ? "Block" : "None");
     mvprintw(panel_y++, panel_x, "Score: %d", st.defscore);
     panel_y++;
 
     if (g_role == 0) {
         attron(COLOR_PAIR(COLOR_PIECE_I) | A_BOLD);
-        mvprintw(panel_y++, panel_x, "You: TETRIS");
+        mvprintw(panel_y++, panel_x, "You: ATTACKER");
         attroff(COLOR_PAIR(COLOR_PIECE_I) | A_BOLD);
     } else {
-        attron(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
-        mvprintw(panel_y++, panel_x, "You: CHARACTER");
-        attroff(COLOR_PAIR(COLOR_CHAR) | A_BOLD);
+        attron(COLOR_PAIR(COLOR_DEFENDER) | A_BOLD);
+        mvprintw(panel_y++, panel_x, "You: DEFENDER");
+        attroff(COLOR_PAIR(COLOR_DEFENDER) | A_BOLD);
     }
     panel_y++;
 
@@ -1037,7 +1037,7 @@ static void handle_input(void) {
     } else if (ch == 'p' || ch == 'P') {
         key = K_PAUSE;
     } else if (g_role == 0) {
-        /* Tetris player: WASD + Space */
+        /* Attacker player: WASD + Space */
         switch (ch) {
         case 'a': case 'A': key = K_LEFT;      break;
         case 'd': case 'D': key = K_RIGHT;     break;
@@ -1046,15 +1046,15 @@ static void handle_input(void) {
         case ' ':           key = K_HARD_DROP;  break;
         }
     } else {
-        /* Character player: Arrow keys + Z/X */
+        /* Defender player: Arrow keys + Z/X */
         switch (ch) {
-        case KEY_LEFT:  key = K_CH_LEFT;   break;
-        case KEY_RIGHT: key = K_CH_RIGHT;  break;
-        case KEY_UP:    key = K_CH_JUMP;   break;
-        case KEY_DOWN:  key = K_CH_DOWN;   break;
-        case 'z': case 'Z': key = K_CH_JUMP;   break;
-        case 'x': case 'X': key = K_CH_PICKUP; break;
-        case 'c': case 'C': key = K_CH_ITEM;   break;
+        case KEY_LEFT:  key = K_DEFENDER_LEFT;   break;
+        case KEY_RIGHT: key = K_DEFENDER_RIGHT;  break;
+        case KEY_UP:    key = K_DEFENDER_JUMP;   break;
+        case KEY_DOWN:  key = K_DEFENDER_DOWN;   break;
+        case 'z': case 'Z': key = K_DEFENDER_JUMP;   break;
+        case 'x': case 'X': key = K_DEFENDER_PICKUP; break;
+        case 'c': case 'C': key = K_DEFENDER_ITEM;   break;
         }
     }
 
@@ -1110,8 +1110,12 @@ int main(int argc, char *argv[]) {
     }
     g_role = welcome.role;
     printf("Connected! Your role: %s\n",
-           g_role == 0 ? "TETRIS Player (WASD + Space)" :
-                         "CHARACTER Player (Arrows + Z/X)");
+           g_role == 0 ? "ATTACKER Player (WASD + Space)" :
+                         "DEFENDER Player (Arrows + Z/X)");
+
+    printf("\033[8;30;80t");
+    fflush(stdout);
+    usleep(50000);
 
     /* init ncurses */
     setlocale(LC_ALL, "");
@@ -1126,10 +1130,6 @@ int main(int argc, char *argv[]) {
     /* check terminal size */
     int rows, cols;
     struct winsize ws;
-
-    printf("\033[8;30;80t");
-    fflush(stdout);
-    usleep(50000);
 
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0) {
         rows = ws.ws_row;

@@ -121,7 +121,7 @@ static const Shape SHAPES[8][4] = {
     }
 };
 
-/* ──────────── Character ──────────── */
+/* ──────────── Defender ──────────── */
 typedef struct {
     int x, y;           /* board position (col, row) */
     int carrying;       /* 0=none, 1-7=block type */
@@ -136,7 +136,7 @@ typedef struct {
     int drill_target_x;
     int drill_target_y;
     int drill_crack_timer;
-} Character;
+} Defender;
 
 typedef struct {
     int type;
@@ -187,8 +187,8 @@ typedef struct {
     int next_item_type;
     QueuedPiece piece_queue[PIECE_QUEUE_DEPTH];
 
-    /* character */
-    Character ch;
+    /* defender */
+    Defender defender;
 
     /* scoring */
     int score;
@@ -242,7 +242,7 @@ typedef struct {
 /* server → client (role assignment) */
 typedef struct {
     int type;   /* MSG_ROLE */
-    int role;   /* 0=tetris player, 1=character player */
+    int role;   /* 0=attacker player, 1=defender player */
 } MsgRole;
 
 typedef struct {
@@ -260,20 +260,20 @@ typedef struct {
 
 /* ──────────── Input keys (unified codes) ──────────── */
 #define KEY_NONE      0
-/* Tetris player */
+/* Attacker player */
 #define K_LEFT        1
 #define K_RIGHT       2
 #define K_ROTATE      3
 #define K_SOFT_DROP   4
 #define K_HARD_DROP   5
-/* Character player */
-#define K_CH_LEFT     11
-#define K_CH_RIGHT    12
-#define K_CH_UP       13
-#define K_CH_DOWN     14
-#define K_CH_PICKUP   15  /* pick up / place block */
-#define K_CH_JUMP     16
-#define K_CH_ITEM     17  /* use item */
+/* Defender player */
+#define K_DEFENDER_LEFT     11
+#define K_DEFENDER_RIGHT    12
+#define K_DEFENDER_UP       13
+#define K_DEFENDER_DOWN     14
+#define K_DEFENDER_PICKUP   15  /* pick up / place block */
+#define K_DEFENDER_JUMP     16
+#define K_DEFENDER_ITEM     17  /* use item */
 /* Common */
 #define K_PAUSE       97
 #define K_RESTART     98

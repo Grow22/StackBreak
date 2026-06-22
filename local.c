@@ -1,5 +1,5 @@
 /*
- * local.c - Tetris VS Local Mode (Enhanced Edition)
+ * local.c - Stack and Break Local Mode (Enhanced Edition)
  *
  * Full-featured local mode with particle effects, screen shake,
  * enhanced jump physics (coyote time, jump buffer), combo system,
@@ -84,8 +84,8 @@ static int g_softdrop_cooldown_timer = 0;
 static void apply_column_gravity(int col);
 static void give_item(int item_type);
 static void add_effect(int type, int x, int y, int timer, int param);
-static void push_character_from_piece(int cells[4][2]);
-static void stun_character(void);
+static void push_defender_from_piece(int cells[4][2]);
+static void stun_defender(void);
 static int char_on_ground(void);
 
 /* ──────────── Helpers ──────────── */
@@ -279,7 +279,7 @@ static void spawn_drill_sparks(int x, int y) {
 }
 
 static void spawn_shield_burst(int x, int y) {
-    /* Simple flash, shield visual is rendered above character */
+    /* Simple flash, shield visual is rendered above defender */
     spawn_particle(x, y, 0, 0, 5, "<>", 16, 1);
     trigger_shake(1, 3);
 }
@@ -408,45 +408,45 @@ static void apply_column_gravity(int col) {
 /* ──────────── Give Item ──────────── */
 static void give_item(int item_type) {
     if (item_type <= 0) return;
-    if (g_state.ch.inv_count < 3)
-        g_state.ch.inventory[g_state.ch.inv_count++] = item_type;
+    if (g_state.defender.inv_count < 3)
+        g_state.defender.inventory[g_state.defender.inv_count++] = item_type;
     else {
-        g_state.ch.inventory[0] = g_state.ch.inventory[1];
-        g_state.ch.inventory[1] = g_state.ch.inventory[2];
-        g_state.ch.inventory[2] = item_type;
+        g_state.defender.inventory[0] = g_state.defender.inventory[1];
+        g_state.defender.inventory[1] = g_state.defender.inventory[2];
+        g_state.defender.inventory[2] = item_type;
     }
 }
 
-/* ──────────── Character Helpers ──────────── */
-static void push_character_from_piece(int cells[4][2]) {
+/* ──────────── Defender Helpers ──────────── */
+static void push_defender_from_piece(int cells[4][2]) {
     for (int dx = 1; dx < BOARD_W; dx++) {
-        int nx = g_state.ch.x + dx;
-        if (nx < BOARD_W && g_state.board[g_state.ch.y][nx] == 0) {
+        int nx = g_state.defender.x + dx;
+        if (nx < BOARD_W && g_state.board[g_state.defender.y][nx] == 0) {
             int ov = 0;
             for (int j = 0; j < 4; j++)
-                if (cells[j][0]==g_state.ch.y && cells[j][1]==nx) ov=1;
-            if (!ov) { g_state.ch.x = nx; return; }
+                if (cells[j][0]==g_state.defender.y && cells[j][1]==nx) ov=1;
+            if (!ov) { g_state.defender.x = nx; return; }
         }
-        nx = g_state.ch.x - dx;
-        if (nx >= 0 && g_state.board[g_state.ch.y][nx] == 0) {
+        nx = g_state.defender.x - dx;
+        if (nx >= 0 && g_state.board[g_state.defender.y][nx] == 0) {
             int ov = 0;
             for (int j = 0; j < 4; j++)
-                if (cells[j][0]==g_state.ch.y && cells[j][1]==nx) ov=1;
-            if (!ov) { g_state.ch.x = nx; return; }
+                if (cells[j][0]==g_state.defender.y && cells[j][1]==nx) ov=1;
+            if (!ov) { g_state.defender.x = nx; return; }
         }
     }
 }
 
-/* Push character up until not inside a block */
+/* Push defender up until not inside a block */
 static void escape_up(void) {
-    while (g_state.ch.y >= 0 && g_state.board[g_state.ch.y][g_state.ch.x] != 0)
-        g_state.ch.y--;
-    if (g_state.ch.y < 0) g_state.ch.y = 0;
+    while (g_state.defender.y >= 0 && g_state.board[g_state.defender.y][g_state.defender.x] != 0)
+        g_state.defender.y--;
+    if (g_state.defender.y < 0) g_state.defender.y = 0;
 }
 
-static void stun_character(void) {
-    g_state.ch.stun_timer = STUN_TICKS;
-    g_state.ch.stun_invuln_timer = STUN_TICKS + STUN_INVULN_TICKS;
+static void stun_defender(void) {
+    g_state.defender.stun_timer = STUN_TICKS;
+    g_state.defender.stun_invuln_timer = STUN_TICKS + STUN_INVULN_TICKS;
 }
 
 /* ──────────── Piece Helpers ──────────── */
@@ -508,35 +508,35 @@ static int piece_valid(int type, int rot, int pr, int pc) {
     return 1;
 }
 
-static int char_hit_by_piece(int cells[4][2]) {
+static int defender_hit_by_piece(int cells[4][2]) {
     for (int i = 0; i < 4; i++)
-        if (cells[i][0]==g_state.ch.y && cells[i][1]==g_state.ch.x) return 1;
+        if (cells[i][0]==g_state.defender.y && cells[i][1]==g_state.defender.x) return 1;
     return 0;
 }
 
 /* ──────────── Lock Piece ──────────── */
-static int harddrop_sweep_hits_character(int start_r, int end_r) {
-    if (g_state.ch.stun_timer > 0 || g_state.ch.stun_invuln_timer > 0)
+static int harddrop_sweep_hits_defender(int start_r, int end_r) {
+    if (g_state.defender.stun_timer > 0 || g_state.defender.stun_invuln_timer > 0)
         return 0;
 
     for (int pr = start_r; pr <= end_r; pr++) {
         int cells[4][2];
         piece_cells(g_state.piece_type, g_state.piece_rot,
                     pr, g_state.piece_c, cells);
-        if (!char_hit_by_piece(cells))
+        if (!defender_hit_by_piece(cells))
             continue;
 
-        if (g_state.ch.shield_timer > 0) {
+        if (g_state.defender.shield_timer > 0) {
             g_state.attacker_stun_timer = 45;
-            add_effect(EFFECT_SHIELD, g_state.ch.x, g_state.ch.y, 10, 0);
-            spawn_shield_burst(g_state.ch.x, g_state.ch.y);
+            add_effect(EFFECT_SHIELD, g_state.defender.x, g_state.defender.y, 10, 0);
+            spawn_shield_burst(g_state.defender.x, g_state.defender.y);
 	    subtract_atk_score();
         } else {
 	    add_atk_score();
-            stun_character();
-            spawn_stun_stars(g_state.ch.x, g_state.ch.y);
+            stun_defender();
+            spawn_stun_stars(g_state.defender.x, g_state.defender.y);
         }
-        push_character_from_piece(cells);
+        push_defender_from_piece(cells);
         return 1;
     }
     return 0;
@@ -546,18 +546,18 @@ static void lock_piece(void) {
     int cells[4][2];
     piece_cells(g_state.piece_type, g_state.piece_rot,
                 g_state.piece_r, g_state.piece_c, cells);
-    if (char_hit_by_piece(cells)) {
-        if (g_state.ch.shield_timer > 0) {
+    if (defender_hit_by_piece(cells)) {
+        if (g_state.defender.shield_timer > 0) {
             g_state.attacker_stun_timer = 45;
-            add_effect(EFFECT_SHIELD, g_state.ch.x, g_state.ch.y, 10, 0);
-            spawn_shield_burst(g_state.ch.x, g_state.ch.y);
+            add_effect(EFFECT_SHIELD, g_state.defender.x, g_state.defender.y, 10, 0);
+            spawn_shield_burst(g_state.defender.x, g_state.defender.y);
 	    subtract_atk_score();
-        } else if (g_state.ch.stun_invuln_timer == 0) {
-            stun_character();
+        } else if (g_state.defender.stun_invuln_timer == 0) {
+            stun_defender();
 	    add_atk_score();
-            spawn_stun_stars(g_state.ch.x, g_state.ch.y);
+            spawn_stun_stars(g_state.defender.x, g_state.defender.y);
         }
-        push_character_from_piece(cells);
+        push_defender_from_piece(cells);
     }
     for (int i = 0; i < 4; i++) {
         int r = cells[i][0], c = cells[i][1];
@@ -570,19 +570,19 @@ static void lock_piece(void) {
     }
     for (int c = 0; c < BOARD_W; c++) apply_column_gravity(c);
 
-    /* After gravity: check if character is now inside a block */
-    if (g_state.ch.y >= 0 && g_state.ch.y < BOARD_H &&
-        g_state.ch.x >= 0 && g_state.ch.x < BOARD_W &&
-        g_state.board[g_state.ch.y][g_state.ch.x] != 0) {
-        if (g_state.ch.shield_timer > 0) {
+    /* After gravity: check if defender is now inside a block */
+    if (g_state.defender.y >= 0 && g_state.defender.y < BOARD_H &&
+        g_state.defender.x >= 0 && g_state.defender.x < BOARD_W &&
+        g_state.board[g_state.defender.y][g_state.defender.x] != 0) {
+        if (g_state.defender.shield_timer > 0) {
             g_state.attacker_stun_timer = 45;
-            add_effect(EFFECT_SHIELD, g_state.ch.x, g_state.ch.y, 10, 0); 
+            add_effect(EFFECT_SHIELD, g_state.defender.x, g_state.defender.y, 10, 0); 
 	    subtract_atk_score();
-            spawn_shield_burst(g_state.ch.x, g_state.ch.y);
-        } else if (g_state.ch.stun_invuln_timer == 0) {
+            spawn_shield_burst(g_state.defender.x, g_state.defender.y);
+        } else if (g_state.defender.stun_invuln_timer == 0) {
 	    add_atk_score();
-            stun_character();
-            spawn_stun_stars(g_state.ch.x, g_state.ch.y);
+            stun_defender();
+            spawn_stun_stars(g_state.defender.x, g_state.defender.y);
         }
         escape_up();
     }
@@ -601,8 +601,8 @@ static int clear_lines(void) {
             for (int c = 0; c < BOARD_W; c++)
                 if (g_state.board[r][c] >= 10)
                     give_item(g_state.board[r][c] / 10);
-            if (g_state.ch.y == r) { if (r > 0) g_state.ch.y = r-1; }
-            else if (g_state.ch.y < r) g_state.ch.y++;
+            if (g_state.defender.y == r) { if (r > 0) g_state.defender.y = r-1; }
+            else if (g_state.defender.y < r) g_state.defender.y++;
             for (int rr = r; rr > 0; rr--)
                 memcpy(g_state.board[rr], g_state.board[rr-1], sizeof(int)*BOARD_W);
             memset(g_state.board[0], 0, sizeof(int)*BOARD_W);
@@ -667,42 +667,42 @@ static void spawn_piece(void) {
     }
 }
 
-/* ──────────── Character Physics ──────────── */
+/* ──────────── Defender Physics ──────────── */
 static int char_on_ground(void) {
-    if (g_state.ch.y >= BOARD_H - 1) return 1;
-    return g_state.board[g_state.ch.y + 1][g_state.ch.x] != 0;
+    if (g_state.defender.y >= BOARD_H - 1) return 1;
+    return g_state.board[g_state.defender.y + 1][g_state.defender.x] != 0;
 }
 
-static void character_physics(void) {
-    if (g_state.ch.stun_timer > 0) return;
-    if (g_state.ch.jump_vel > 0) {
-        int ny = g_state.ch.y - 1;
-        if (ny >= 0 && g_state.board[ny][g_state.ch.x] == 0) {
-            g_state.ch.y = ny;
-            g_state.ch.jump_vel--;
-            g_state.ch.drill_crack_timer = 0;
-        } else g_state.ch.jump_vel = 0;
+static void defender_physics(void) {
+    if (g_state.defender.stun_timer > 0) return;
+    if (g_state.defender.jump_vel > 0) {
+        int ny = g_state.defender.y - 1;
+        if (ny >= 0 && g_state.board[ny][g_state.defender.x] == 0) {
+            g_state.defender.y = ny;
+            g_state.defender.jump_vel--;
+            g_state.defender.drill_crack_timer = 0;
+        } else g_state.defender.jump_vel = 0;
     } else {
-        int ny = g_state.ch.y + 1;
-        if (ny < BOARD_H && g_state.board[ny][g_state.ch.x] == 0) {
-            g_state.ch.y = ny;
-            g_state.ch.drill_crack_timer = 0;
+        int ny = g_state.defender.y + 1;
+        if (ny < BOARD_H && g_state.board[ny][g_state.defender.x] == 0) {
+            g_state.defender.y = ny;
+            g_state.defender.drill_crack_timer = 0;
         }
     }
 }
 
 static void try_jump(void) {
-    if (g_state.ch.stun_timer > 0 || g_state.ch.jump_vel > 0) return;
+    if (g_state.defender.stun_timer > 0 || g_state.defender.jump_vel > 0) return;
     int grounded = char_on_ground() || g_coyote_timer > 0;
     if (!grounded) return;
-    g_state.ch.jump_vel = 3;
+    g_state.defender.jump_vel = 3;
     g_coyote_timer = 0;
     g_jump_buffer = 0;
-    int ny = g_state.ch.y - 1;
-    if (ny >= 0 && g_state.board[ny][g_state.ch.x] == 0) {
-        g_state.ch.y = ny;
-        g_state.ch.jump_vel--;
-    } else g_state.ch.jump_vel = 0;
+    int ny = g_state.defender.y - 1;
+    if (ny >= 0 && g_state.board[ny][g_state.defender.x] == 0) {
+        g_state.defender.y = ny;
+        g_state.defender.jump_vel--;
+    } else g_state.defender.jump_vel = 0;
 }
 
 /* ──────────── Init ──────────── */
@@ -716,9 +716,9 @@ static void init_game(void) {
     g_state.score = 0;
     g_state.defscore = 0;
     g_state.atkscore = 0;
-    g_state.ch.x = BOARD_W/2; g_state.ch.y = BOARD_H-1;
-    g_state.ch.facing = 1;
-    g_state.ch.drill_target_x = -1; g_state.ch.drill_target_y = -1;
+    g_state.defender.x = BOARD_W/2; g_state.defender.y = BOARD_H-1;
+    g_state.defender.facing = 1;
+    g_state.defender.drill_target_x = -1; g_state.defender.drill_target_y = -1;
     g_state.level = 1; g_state.game_started = 1;
     g_state.attacker_hp = 5;
     g_num_particles = 0;
@@ -741,26 +741,26 @@ static void game_tick(void) {
     tick_particles();
 
     /* Countdown timers */
-    if (g_state.ch.stun_timer > 0) {
-        g_state.ch.stun_timer--;
-        if (g_state.ch.stun_timer == 0) {
+    if (g_state.defender.stun_timer > 0) {
+        g_state.defender.stun_timer--;
+        if (g_state.defender.stun_timer == 0) {
             /* Stun ended: escape if stuck inside a block */
-            if (g_state.ch.y >= 0 && g_state.ch.y < BOARD_H &&
-                g_state.ch.x >= 0 && g_state.ch.x < BOARD_W &&
-                g_state.board[g_state.ch.y][g_state.ch.x] != 0)
+            if (g_state.defender.y >= 0 && g_state.defender.y < BOARD_H &&
+                g_state.defender.x >= 0 && g_state.defender.x < BOARD_W &&
+                g_state.board[g_state.defender.y][g_state.defender.x] != 0)
                 escape_up();
-            if (g_state.ch.stun_invuln_timer > 0) {
-                add_effect(EFFECT_SHIELD, g_state.ch.x, g_state.ch.y, 10, 0);
-                spawn_shield_burst(g_state.ch.x, g_state.ch.y);
+            if (g_state.defender.stun_invuln_timer > 0) {
+                add_effect(EFFECT_SHIELD, g_state.defender.x, g_state.defender.y, 10, 0);
+                spawn_shield_burst(g_state.defender.x, g_state.defender.y);
             }
         }
     }
-    if (g_state.ch.stun_invuln_timer > 0) g_state.ch.stun_invuln_timer--;
+    if (g_state.defender.stun_invuln_timer > 0) g_state.defender.stun_invuln_timer--;
     if (g_state.attacker_stun_timer > 0) g_state.attacker_stun_timer--;
     if (g_harddrop_cooldown_timer > 0) g_harddrop_cooldown_timer--;
     if (g_softdrop_cooldown_timer > 0) g_softdrop_cooldown_timer--;
-    if (g_state.ch.shield_timer > 0) g_state.ch.shield_timer--;
-    if (g_state.ch.drill_timer > 0) g_state.ch.drill_timer--;
+    if (g_state.defender.shield_timer > 0) g_state.defender.shield_timer--;
+    if (g_state.defender.drill_timer > 0) g_state.defender.drill_timer--;
     if (g_lock_flash_timer > 0) g_lock_flash_timer--;
     if (g_combo_timer > 0) {
 	    g_combo_timer--;
@@ -773,10 +773,10 @@ static void game_tick(void) {
     if (g_bowser_hit_timer > 0) g_bowser_hit_timer--;
 
     /* Drill cracking */
-    if (g_state.ch.drill_crack_timer > 0) {
-        g_state.ch.drill_crack_timer--;
-        if (g_state.ch.drill_crack_timer == 0) {
-            int tx = g_state.ch.drill_target_x, ty = g_state.ch.drill_target_y;
+    if (g_state.defender.drill_crack_timer > 0) {
+        g_state.defender.drill_crack_timer--;
+        if (g_state.defender.drill_crack_timer == 0) {
+            int tx = g_state.defender.drill_target_x, ty = g_state.defender.drill_target_y;
             if (ty>=0 && ty<BOARD_H && tx>=0 && tx<BOARD_W) {
                 if (g_state.board[ty][tx] >= 10)
                     give_item(g_state.board[ty][tx] / 10);
@@ -789,7 +789,7 @@ static void game_tick(void) {
                 add_effect(EFFECT_DRILL, tx, ty, 6, 0);
                 spawn_drill_sparks(tx, ty);
             }
-            g_state.ch.drill_target_x = -1; g_state.ch.drill_target_y = -1;
+            g_state.defender.drill_target_x = -1; g_state.defender.drill_target_y = -1;
         }
     }
 
@@ -803,7 +803,7 @@ static void game_tick(void) {
     int on_ground = char_on_ground();
     if (on_ground) {
         g_coyote_timer = COYOTE_TICKS;
-        if (g_jump_buffer > 0 && g_state.ch.jump_vel == 0 && g_state.ch.stun_timer == 0)
+        if (g_jump_buffer > 0 && g_state.defender.jump_vel == 0 && g_state.defender.stun_timer == 0)
             try_jump();
     } else {
         if (g_coyote_timer > 0) g_coyote_timer--;
@@ -811,15 +811,15 @@ static void game_tick(void) {
     g_was_on_ground = on_ground;
     if (g_jump_buffer > 0) g_jump_buffer--;
 
-    /* Character physics */
+    /* Defender physics */
     gravity_counter++;
     int phys_rate = 3;
-    if (g_state.ch.jump_vel == 3) phys_rate = 2;
-    else if (g_state.ch.jump_vel == 2) phys_rate = 3;
-    else if (g_state.ch.jump_vel == 1) phys_rate = 6;
+    if (g_state.defender.jump_vel == 3) phys_rate = 2;
+    else if (g_state.defender.jump_vel == 2) phys_rate = 3;
+    else if (g_state.defender.jump_vel == 1) phys_rate = 6;
     if (gravity_counter >= phys_rate) {
         gravity_counter = 0;
-        character_physics();
+        defender_physics();
     }
 
     /* Auto-drop */
@@ -851,16 +851,16 @@ static void game_tick(void) {
         int cells[4][2];
         piece_cells(g_state.piece_type, g_state.piece_rot,
                     g_state.piece_r, g_state.piece_c, cells);
-        if (char_hit_by_piece(cells) && g_state.ch.stun_timer==0 &&
-            g_state.ch.stun_invuln_timer==0) {
-            if (g_state.ch.shield_timer > 0) {
+        if (defender_hit_by_piece(cells) && g_state.defender.stun_timer==0 &&
+            g_state.defender.stun_invuln_timer==0) {
+            if (g_state.defender.shield_timer > 0) {
                 if (g_state.attacker_stun_timer == 0)
-                    add_effect(EFFECT_SHIELD, g_state.ch.x, g_state.ch.y, 10, 0);
+                    add_effect(EFFECT_SHIELD, g_state.defender.x, g_state.defender.y, 10, 0);
                 g_state.attacker_stun_timer = 45;
-                spawn_shield_burst(g_state.ch.x, g_state.ch.y);
+                spawn_shield_burst(g_state.defender.x, g_state.defender.y);
             } else {
-                stun_character();
-                spawn_stun_stars(g_state.ch.x, g_state.ch.y);
+                stun_defender();
+                spawn_stun_stars(g_state.defender.x, g_state.defender.y);
             }
         }
     }
@@ -912,8 +912,8 @@ static void game_tick(void) {
 #define COLOR_PIECE_Z 5
 #define COLOR_PIECE_J 6
 #define COLOR_PIECE_L 7
-#define COLOR_CHAR    8
-#define COLOR_CHAR_STUN 9
+#define COLOR_DEFENDER    8
+#define COLOR_DEFENDER_STUN 9
 #define COLOR_BORDER  10
 #define COLOR_GHOST   11
 #define COLOR_BG      12
@@ -1059,12 +1059,12 @@ static void draw_cell(int y, int x, int type, int is_ghost, int item_type) {
 }
 
 static int has_ready_bomb(void) {
-    return g_state.ch.inv_count>0 && g_state.ch.inventory[0]==1;
+    return g_state.defender.inv_count>0 && g_state.defender.inventory[0]==1;
 }
 static int is_bomb_preview(int r, int c) {
     if (g_state.game_over||!has_ready_bomb()) return 0;
-    if (r==g_state.ch.y&&c==g_state.ch.x) return 0;
-    int l=g_state.ch.x-2, t=g_state.ch.y-2;
+    if (r==g_state.defender.y&&c==g_state.defender.x) return 0;
+    int l=g_state.defender.x-2, t=g_state.defender.y-2;
     return r>=t&&r<t+4&&c>=l&&c<l+4;
 }
 
@@ -1236,9 +1236,9 @@ static void render(void) {
     /* Board cells */
     for (int r=0;r<BOARD_H;r++) for(int c=0;c<BOARD_W;c++) {
         int cy=sy+1+r, cx=sx+1+c*CELL_W;
-        if (r==g_state.ch.drill_target_y && c==g_state.ch.drill_target_x &&
-            g_state.ch.drill_crack_timer>0) {
-            int phase = ((g_state.ch.drill_crack_timer-1)*4)/8+1;
+        if (r==g_state.defender.drill_target_y && c==g_state.defender.drill_target_x &&
+            g_state.defender.drill_crack_timer>0) {
+            int phase = ((g_state.defender.drill_crack_timer-1)*4)/8+1;
             if(phase<1) phase=1;
             if(phase>4) phase=4;
             attron(COLOR_PAIR(15)|A_BOLD);
@@ -1288,40 +1288,40 @@ static void render(void) {
         }
     }
 
-    /* Character (Pac-Man 1-cell with wakka-wakka animation) */
+    /* Defender (Pac-Man 1-cell with wakka-wakka animation) */
     {
-        int cr=g_state.ch.y, cc=g_state.ch.x;
+        int cr=g_state.defender.y, cc=g_state.defender.x;
         if(cr>=0&&cr<BOARD_H&&cc>=0&&cc<BOARD_W) {
             int cy=sy+1+cr, cx=sx+1+cc*CELL_W;
             g_pac_anim++;
             int mouth = (g_pac_anim / 6) % 2; /* 0=closed, 1=open */
 
-            if (g_state.ch.stun_timer > 0) {
+            if (g_state.defender.stun_timer > 0) {
                 /* Stunned: red bg, dizzy eyes */
                 attron(COLOR_PAIR(9)|A_BOLD);
-                if (g_state.ch.stun_timer%4<2) mvprintw(cy,cx,"XX");
+                if (g_state.defender.stun_timer%4<2) mvprintw(cy,cx,"XX");
                 else mvprintw(cy,cx,"xx");
                 attroff(COLOR_PAIR(9)|A_BOLD);
-            } else if (g_state.ch.carrying) {
+            } else if (g_state.defender.carrying) {
                 /* Carrying block: yellow bg, carry indicator */
                 attron(COLOR_PAIR(8)|A_BOLD);
-                if(g_state.ch.facing==1)       mvprintw(cy,cx,"o]");
-                else if(g_state.ch.facing==-1) mvprintw(cy,cx,"[o");
+                if(g_state.defender.facing==1)       mvprintw(cy,cx,"o]");
+                else if(g_state.defender.facing==-1) mvprintw(cy,cx,"[o");
                 else                           mvprintw(cy,cx,"oo");
                 attroff(COLOR_PAIR(8)|A_BOLD);
-            } else if (g_state.ch.drill_timer > 0) {
+            } else if (g_state.defender.drill_timer > 0) {
                 /* Drill active: bright white bg, drill chars */
                 attron(COLOR_PAIR(15)|A_BOLD);
-                if(g_state.ch.facing==1)       mvprintw(cy,cx,">>");
-                else if(g_state.ch.facing==-1) mvprintw(cy,cx,"<<");
+                if(g_state.defender.facing==1)       mvprintw(cy,cx,">>");
+                else if(g_state.defender.facing==-1) mvprintw(cy,cx,"<<");
                 else                           mvprintw(cy,cx,"vv");
                 attroff(COLOR_PAIR(15)|A_BOLD);
             } else {
                 /* Normal: yellow bg, eye + mouth animation */
                 attron(COLOR_PAIR(8)|A_BOLD);
                 if (mouth) {
-                    if(g_state.ch.facing==1)       mvprintw(cy,cx,"o>");
-                    else if(g_state.ch.facing==-1) mvprintw(cy,cx,"<o");
+                    if(g_state.defender.facing==1)       mvprintw(cy,cx,"o>");
+                    else if(g_state.defender.facing==-1) mvprintw(cy,cx,"<o");
                     else                           mvprintw(cy,cx,"oo");
                 } else {
                     mvprintw(cy,cx,"oo");
@@ -1331,11 +1331,11 @@ static void render(void) {
 
             /* Shield bubble (1-cell size) */
             int invuln_shield_timer = 0;
-            if (g_state.ch.shield_timer > 0)
-                invuln_shield_timer = g_state.ch.shield_timer;
-            else if (g_state.ch.stun_timer == 0 && g_state.ch.stun_invuln_timer > 0)
-                invuln_shield_timer = g_state.ch.stun_invuln_timer;
-            if (invuln_shield_timer > 0 && !g_state.ch.stun_timer) {
+            if (g_state.defender.shield_timer > 0)
+                invuln_shield_timer = g_state.defender.shield_timer;
+            else if (g_state.defender.stun_timer == 0 && g_state.defender.stun_invuln_timer > 0)
+                invuln_shield_timer = g_state.defender.stun_invuln_timer;
+            if (invuln_shield_timer > 0 && !g_state.defender.stun_timer) {
                 int attr = COLOR_PAIR(16)|A_BOLD;
                 if (invuln_shield_timer%4<2) attr |= A_REVERSE;
                 attron(attr);
@@ -1376,7 +1376,7 @@ static void render(void) {
 
     /* ── Side Panel ── */
     int px = sx+bw+4, py = sy/3-1;
-    attron(A_BOLD); mvprintw(py,px,"TETRIS VS"); attroff(A_BOLD);
+    attron(A_BOLD); mvprintw(py,px,"STACK AND BREAK"); attroff(A_BOLD);
     py+=1;
     mvprintw(py++,px,"Level: %d",g_state.level);
     mvprintw(py++,px,"Lines: %d",g_state.lines);
@@ -1430,10 +1430,10 @@ static void render(void) {
 
     /* Defender */
     mvprintw(py++,px,"--- Defender ---");
-    if (g_state.ch.stun_timer>0)
-        mvprintw(py++,px,"STUNNED! %.1fs",ticks_to_sec(g_state.ch.stun_timer));
-    else if (g_state.ch.stun_invuln_timer>0)
-        mvprintw(py++,px,"INVULN! %.1fs",ticks_to_sec(g_state.ch.stun_invuln_timer));
+    if (g_state.defender.stun_timer>0)
+        mvprintw(py++,px,"STUNNED! %.1fs",ticks_to_sec(g_state.defender.stun_timer));
+    else if (g_state.defender.stun_invuln_timer>0)
+        mvprintw(py++,px,"INVULN! %.1fs",ticks_to_sec(g_state.defender.stun_invuln_timer));
     else mvprintw(py++,px,"Status: OK");
 
     {
@@ -1441,7 +1441,7 @@ static void render(void) {
         const char* itm_empty = "  Empty";
         int sw = 11;
         for (int si=0;si<3;si++) {
-            int inv = (si<g_state.ch.inv_count) ? g_state.ch.inventory[si] : 0;
+            int inv = (si<g_state.defender.inv_count) ? g_state.defender.inventory[si] : 0;
             const char* label = inv>0 ? itm_label[inv] : itm_empty;
             mvprintw(py, px+si*sw, "[");
             mvprintw(py, px+si*sw+1, "%s", label);
@@ -1450,22 +1450,22 @@ static void render(void) {
         py++;
     }
 
-    if (g_state.ch.shield_timer>0) {
+    if (g_state.defender.shield_timer>0) {
         attron(COLOR_PAIR(16)|A_BOLD);
-        mvprintw(py++,px,"[ SHIELD %.1fs ]",ticks_to_sec(g_state.ch.shield_timer));
+        mvprintw(py++,px,"[ SHIELD %.1fs ]",ticks_to_sec(g_state.defender.shield_timer));
         attroff(COLOR_PAIR(16)|A_BOLD);
     }
-    if (g_state.ch.drill_timer>0) {
+    if (g_state.defender.drill_timer>0) {
         attron(COLOR_PAIR(15)|A_BOLD);
-        mvprintw(py++,px,"[ DRILL  %.1fs ]",ticks_to_sec(g_state.ch.drill_timer));
+        mvprintw(py++,px,"[ DRILL  %.1fs ]",ticks_to_sec(g_state.defender.drill_timer));
         attroff(COLOR_PAIR(15)|A_BOLD);
     }
-    mvprintw(py++,px,"Carry: %s",g_state.ch.carrying?"Block":"None");
+    mvprintw(py++,px,"Carry: %s",g_state.defender.carrying?"Block":"None");
     mvprintw(py++,px,"Score: %d",g_state.defscore);
     py++;
 
     attron(A_BOLD); mvprintw(py++,px,"--- Controls ---"); attroff(A_BOLD);
-    mvprintw(py++,px,"WASD+Space: Tetris");
+    mvprintw(py++,px,"WASD+Space: Attacker");
     mvprintw(py++,px,"Arrows+ZXC: Char");
     mvprintw(py++,px,"R=Restart  Q=Quit");
 
@@ -1633,7 +1633,7 @@ static void handle_input(void) {
     if (g_is_paused) return;
 
     int nc;
-    /* Tetris (WASD+Space) */
+    /* Attacker (WASD+Space) */
     if (g_state.attacker_stun_timer==0 && g_state.piece_type!=0 &&
         g_state.attacker_spawn_delay==0) {
 	switch (ch) {
@@ -1672,7 +1672,7 @@ static void handle_input(void) {
             while(piece_valid(g_state.piece_type,g_state.piece_rot,
                               g_state.piece_r+1,g_state.piece_c))
                 { g_state.piece_r++; g_state.score+=2; }
-            harddrop_sweep_hits_character(sr, g_state.piece_r);
+            harddrop_sweep_hits_defender(sr, g_state.piece_r);
             int cells[4][2];
             piece_cells(g_state.piece_type,g_state.piece_rot,
                         g_state.piece_r,g_state.piece_c,cells);
@@ -1690,33 +1690,33 @@ static void handle_input(void) {
         }
     }
 
-    /* Character (Arrows+Z/X/C) */
-    if (g_state.ch.stun_timer > 0) return;
+    /* Defender (Arrows+Z/X/C) */
+    if (g_state.defender.stun_timer > 0) return;
     switch(ch) {
     case KEY_LEFT: {
-        g_state.ch.facing=-1;
-        int nx=g_state.ch.x-1;
+        g_state.defender.facing=-1;
+        int nx=g_state.defender.x-1;
         if(nx>=0) {
-            if(g_state.board[g_state.ch.y][nx]==0) {
-                g_state.ch.x=nx; g_state.ch.drill_crack_timer=0;
-            } else if(g_state.ch.drill_timer>0) {
-                if(g_state.ch.drill_target_x!=nx||g_state.ch.drill_target_y!=g_state.ch.y) {
-                    g_state.ch.drill_target_x=nx; g_state.ch.drill_target_y=g_state.ch.y;
-                    g_state.ch.drill_crack_timer=8;
+            if(g_state.board[g_state.defender.y][nx]==0) {
+                g_state.defender.x=nx; g_state.defender.drill_crack_timer=0;
+            } else if(g_state.defender.drill_timer>0) {
+                if(g_state.defender.drill_target_x!=nx||g_state.defender.drill_target_y!=g_state.defender.y) {
+                    g_state.defender.drill_target_x=nx; g_state.defender.drill_target_y=g_state.defender.y;
+                    g_state.defender.drill_crack_timer=8;
                 }
             }
         }
         break; }
     case KEY_RIGHT: {
-        g_state.ch.facing=1;
-        int nx=g_state.ch.x+1;
+        g_state.defender.facing=1;
+        int nx=g_state.defender.x+1;
         if(nx<BOARD_W) {
-            if(g_state.board[g_state.ch.y][nx]==0) {
-                g_state.ch.x=nx; g_state.ch.drill_crack_timer=0;
-            } else if(g_state.ch.drill_timer>0) {
-                if(g_state.ch.drill_target_x!=nx||g_state.ch.drill_target_y!=g_state.ch.y) {
-                    g_state.ch.drill_target_x=nx; g_state.ch.drill_target_y=g_state.ch.y;
-                    g_state.ch.drill_crack_timer=8;
+            if(g_state.board[g_state.defender.y][nx]==0) {
+                g_state.defender.x=nx; g_state.defender.drill_crack_timer=0;
+            } else if(g_state.defender.drill_timer>0) {
+                if(g_state.defender.drill_target_x!=nx||g_state.defender.drill_target_y!=g_state.defender.y) {
+                    g_state.defender.drill_target_x=nx; g_state.defender.drill_target_y=g_state.defender.y;
+                    g_state.defender.drill_crack_timer=8;
                 }
             }
         }
@@ -1726,57 +1726,57 @@ static void handle_input(void) {
         try_jump();
         break;
     case KEY_DOWN: {
-        g_state.ch.facing=0;
-        int ny=g_state.ch.y+1;
+        g_state.defender.facing=0;
+        int ny=g_state.defender.y+1;
         if(ny<BOARD_H) {
-            if(g_state.board[ny][g_state.ch.x]==0) {
-                g_state.ch.y=ny; g_state.ch.drill_crack_timer=0;
-            } else if(g_state.ch.drill_timer>0) {
-                if(g_state.ch.drill_target_x!=g_state.ch.x||g_state.ch.drill_target_y!=ny) {
-                    g_state.ch.drill_target_x=g_state.ch.x; g_state.ch.drill_target_y=ny;
-                    g_state.ch.drill_crack_timer=8;
+            if(g_state.board[ny][g_state.defender.x]==0) {
+                g_state.defender.y=ny; g_state.defender.drill_crack_timer=0;
+            } else if(g_state.defender.drill_timer>0) {
+                if(g_state.defender.drill_target_x!=g_state.defender.x||g_state.defender.drill_target_y!=ny) {
+                    g_state.defender.drill_target_x=g_state.defender.x; g_state.defender.drill_target_y=ny;
+                    g_state.defender.drill_crack_timer=8;
                 }
             }
         }
         break; }
     case '.': {
-        if(g_state.ch.carrying==0) {
-            int dx=(g_state.ch.facing==0)?0:g_state.ch.facing;
-            int dy=(g_state.ch.facing==0)?1:0;
-            int tx=g_state.ch.x+dx, ty=g_state.ch.y+dy;
+        if(g_state.defender.carrying==0) {
+            int dx=(g_state.defender.facing==0)?0:g_state.defender.facing;
+            int dy=(g_state.defender.facing==0)?1:0;
+            int tx=g_state.defender.x+dx, ty=g_state.defender.y+dy;
             int picked=0;
             if(tx>=0&&tx<BOARD_W&&ty>=0&&ty<BOARD_H&&g_state.board[ty][tx]!=0) {
-                g_state.ch.carrying=g_state.board[ty][tx]%10;
+                g_state.defender.carrying=g_state.board[ty][tx]%10;
                 if(g_state.board[ty][tx]>=10) give_item(g_state.board[ty][tx]/10);
                 g_state.board[ty][tx]=0; apply_column_gravity(tx);
                 do_score_and_combo(clear_lines()); picked=1;
             }
-            if(!picked&&g_state.ch.facing!=0) {
-                ty=g_state.ch.y+1;
+            if(!picked&&g_state.defender.facing!=0) {
+                ty=g_state.defender.y+1;
                 if(tx>=0&&tx<BOARD_W&&ty>=0&&ty<BOARD_H&&g_state.board[ty][tx]!=0) {
-                    g_state.ch.carrying=g_state.board[ty][tx]%10;
+                    g_state.defender.carrying=g_state.board[ty][tx]%10;
                     if(g_state.board[ty][tx]>=10) give_item(g_state.board[ty][tx]/10);
                     g_state.board[ty][tx]=0; apply_column_gravity(tx);
                     do_score_and_combo(clear_lines());
                 }
             }
         } else {
-            int dx=(g_state.ch.facing==0)?0:g_state.ch.facing;
-            int dy=(g_state.ch.facing==0)?1:0;
-            int tx=g_state.ch.x+dx, ty=g_state.ch.y+dy;
+            int dx=(g_state.defender.facing==0)?0:g_state.defender.facing;
+            int dy=(g_state.defender.facing==0)?1:0;
+            int tx=g_state.defender.x+dx, ty=g_state.defender.y+dy;
             if(tx>=0&&tx<BOARD_W&&ty>=0&&ty<BOARD_H&&g_state.board[ty][tx]==0) {
-                g_state.board[ty][tx]=g_state.ch.carrying; g_state.ch.carrying=0;
+                g_state.board[ty][tx]=g_state.defender.carrying; g_state.defender.carrying=0;
                 apply_column_gravity(tx); do_score_and_combo(clear_lines());
             }
         }
         break; }
     case '/':
-        if(g_state.ch.inv_count>0) {
-            int item=g_state.ch.inventory[0];
-            for(int i=0;i<2;i++) g_state.ch.inventory[i]=g_state.ch.inventory[i+1];
-            g_state.ch.inv_count--;
+        if(g_state.defender.inv_count>0) {
+            int item=g_state.defender.inventory[0];
+            for(int i=0;i<2;i++) g_state.defender.inventory[i]=g_state.defender.inventory[i+1];
+            g_state.defender.inv_count--;
             if(item==1) {
-                int bx=g_state.ch.x-2, by=g_state.ch.y-2;
+                int bx=g_state.defender.x-2, by=g_state.defender.y-2;
 		int destroyed_count = 0;
                 for(int r=by;r<by+4;r++) for(int c=bx;c<bx+4;c++)
                     if(r>=0&&r<BOARD_H&&c>=0&&c<BOARD_W) {
@@ -1793,19 +1793,19 @@ static void handle_input(void) {
 			g_popup_score = destroyed_count * 10 * (g_state.level);
 		}
                 do_score_and_combo(clear_lines());
-                add_effect(EFFECT_BOMB,g_state.ch.x,g_state.ch.y,10,4);
-                spawn_bomb_explosion(g_state.ch.x,g_state.ch.y);
+                add_effect(EFFECT_BOMB,g_state.defender.x,g_state.defender.y,10,4);
+                spawn_bomb_explosion(g_state.defender.x,g_state.defender.y);
             } else if(item==2) {
-                g_state.ch.drill_timer=90;
+                g_state.defender.drill_timer=90;
             } else if(item==3) {
-                g_state.ch.shield_timer=105;
+                g_state.defender.shield_timer=105;
             } else if(item==4) {
                 if(g_state.num_bullets<MAX_BULLETS) {
-                    g_state.bullets[g_state.num_bullets][0]=g_state.ch.x;
-                    g_state.bullets[g_state.num_bullets][1]=g_state.ch.y;
+                    g_state.bullets[g_state.num_bullets][0]=g_state.defender.x;
+                    g_state.bullets[g_state.num_bullets][1]=g_state.defender.y;
                     g_state.num_bullets++;
-                    add_effect(EFFECT_GUN_FIRE,g_state.ch.x,g_state.ch.y,6,0);
-                    spawn_gun_muzzle(g_state.ch.x,g_state.ch.y);
+                    add_effect(EFFECT_GUN_FIRE,g_state.defender.x,g_state.defender.y,6,0);
+                    spawn_gun_muzzle(g_state.defender.x,g_state.defender.y);
                 }
             }
         }
