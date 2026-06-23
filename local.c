@@ -1466,7 +1466,7 @@ static void render(void) {
 
     attron(A_BOLD); mvprintw(py++,px,"--- Controls ---"); attroff(A_BOLD);
     mvprintw(py++,px,"WASD+Space: Attacker");
-    mvprintw(py++,px,"Arrows+ZXC: Char");
+    mvprintw(py++,px,"Arrows+,./: Defender");
     mvprintw(py++,px,"R=Restart  Q=Quit");
 
     /* Score popup */
@@ -1690,7 +1690,7 @@ static void handle_input(void) {
         }
     }
 
-    /* Defender (Arrows+Z/X/C) */
+    /* Defender (Arrows+,./) */
     if (g_state.defender.stun_timer > 0) return;
     switch(ch) {
     case KEY_LEFT: {
@@ -1721,7 +1721,7 @@ static void handle_input(void) {
             }
         }
         break; }
-    case KEY_UP: case 'z': case 'Z':
+    case KEY_UP: case ',':
         g_jump_buffer = JUMP_BUFFER_TICKS;
         try_jump();
         break;
