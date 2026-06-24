@@ -938,6 +938,7 @@ static void render(void) {
         mvprintw(panel_y++, panel_x, "C   : Use Item");
     }
     mvprintw(panel_y++, panel_x, "P=Pause R=Restart Q=Quit");
+    panel_y++;
 
     if (st.popup_timer > 0) {
         int pop_y = start_y + BOARD_H / 2 - (24 - st.popup_timer) / 3;
@@ -1078,6 +1079,7 @@ int main(int argc, char *argv[]) {
     sa.sa_handler = handle_signal;
     sigaction(SIGINT,  &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGQUIT, &sa, NULL);
 
     /* connect to server */
     g_sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -1113,7 +1115,7 @@ int main(int argc, char *argv[]) {
            g_role == 0 ? "ATTACKER Player (WASD + Space)" :
                          "DEFENDER Player (Arrows + Z/X)");
 
-    printf("\033[8;30;80t");
+    printf("\033[8;35;80t");
     fflush(stdout);
     usleep(50000);
 
@@ -1134,20 +1136,20 @@ int main(int argc, char *argv[]) {
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0) {
         rows = ws.ws_row;
         cols = ws.ws_col;
-        if (rows < 30 || cols < 80) {
-		ws.ws_row = 30;
+        if (rows < 35 || cols < 80) {
+		ws.ws_row = 35;
 		ws.ws_col = 80;
 		if (ioctl(STDOUT_FILENO, TIOCSWINSZ, &ws) == 0) {
 			usleep(100000);
 			endwin();
 			refresh();
 
-			rows = 30;
+			rows = 35;
 			cols = 80;
 		} else {
 	            endwin();
 	            fprintf(stderr,
-	                "Terminal too small! Need at least 32x80, got %dx%d\n",
+	                "Terminal too small! Need at least 35x80, got %dx%d\n",
         	        cols, rows);
 	            close(g_sock);
 	            return 1;

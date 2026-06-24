@@ -1886,6 +1886,7 @@ int main(void) {
     sa.sa_handler = handle_signal;
     sigaction(SIGINT,&sa,NULL);
     sigaction(SIGTERM,&sa,NULL);
+    sigaction(SIGQUIT,&sa,NULL);
 
     load_highscore();
     init_game();

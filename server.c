@@ -1232,6 +1232,7 @@ int main(int argc, char *argv[]) {
     sa.sa_handler = handle_signal;
     sigaction(SIGINT,  &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGQUIT, &sa, NULL);
     signal(SIGPIPE, SIG_IGN);
 
     load_highscore();
