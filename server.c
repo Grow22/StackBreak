@@ -997,7 +997,9 @@ static void broadcast_state(void) {
         int msg_type = MSG_STATE;
         if (send_all(g_clients[i], &msg_type, sizeof(int)) < 0 ||
             send_all(g_clients[i], &g_state, sizeof(GameState)) < 0) {
-            /* client disconnected */
+            fprintf(stderr, "[Server] Player %d disconnected. Closing game.\n", i + 1);
+            g_running = 0;
+            break;
         }
     }
 }
@@ -1013,8 +1015,12 @@ static void *client_reader(void *arg) {
     MsgInput msg;
 
     while (g_running) {
-        if (recv_all(ca->fd, &msg, sizeof(MsgInput)) < 0)
+        if (recv_all(ca->fd, &msg, sizeof(MsgInput)) < 0) {
+            fprintf(stderr, "[Server] Player %d disconnected. Closing game.\n",
+                    ca->role + 1);
+            g_running = 0;
             break;
+        }
         if (msg.type != MSG_INPUT) continue;
 
         pthread_mutex_lock(&g_lock);
@@ -1402,14 +1408,16 @@ int main(int argc, char *argv[]) {
             usleep(TICK_US - elapsed);
     }
 
-    /* game over - send final state */
     pthread_mutex_lock(&g_lock);
-    broadcast_state();
-    save_highscore();
+    if (g_state.game_over) {
+        broadcast_state();
+        save_highscore();
+        printf("[Server] Game Over! Score: %d  High Score: %d\n",
+               g_state.score, g_highscore);
+    } else {
+        fprintf(stderr, "[Server] Game cancelled. Closing all clients.\n");
+    }
     pthread_mutex_unlock(&g_lock);
-
-    printf("[Server] Game Over! Score: %d  High Score: %d\n",
-           g_state.score, g_highscore);
 
     /* cleanup */
     usleep(500000);  /* let clients read final state */
