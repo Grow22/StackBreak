@@ -1437,6 +1437,7 @@ static void render(void) {
     else mvprintw(py++,px,"Status: OK");
 
     {
+        attrset(A_NORMAL);
         const char* itm_label[]={"","💣 Bomb","⛏️  Drill","🛡  Shield","🔫 Gun"};
         const char* itm_empty = "  Empty";
         int sw = 11;

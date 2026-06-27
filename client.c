@@ -653,7 +653,7 @@ static void render(void) {
     if (start_y < 6) start_y = 6;
     if (start_x < 0) start_x = 0;
 
-    if (st.shake_timer > 0 && st.shake_intensity > 0) {
+    if (st.shake_timer > 0 && st.shake_intensity > 0 && !st.game_over) {
         int span = st.shake_intensity * 2 + 1;
         start_y += (rand() % span) - st.shake_intensity;
         start_x += (rand() % span) - st.shake_intensity;
@@ -883,6 +883,7 @@ static void render(void) {
         mvprintw(panel_y++, panel_x, "Status: OK");
 
     {
+        attrset(A_NORMAL);
         const char *items[] = {"", "💣 Bomb", "⛏️  Drill", "🛡  Shield", "🔫 Gun"};
         const char *empty = "  Empty";
         int slot_w = 11;
