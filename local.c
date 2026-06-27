@@ -1833,16 +1833,22 @@ static void show_start_screen(void) {
     mvwprintw(win, 1, 18, "LOCAL LEADERBOARD");
     wattroff(win, A_BOLD);
     mvwprintw(win, 2, 4, "High Score: %d", g_highscore);
-    mvwprintw(win, 4, 4, "Rank  Player                         Score");
+    mvwprintw(win, 4, 4, "Rank  Player                         Score  WIN");
 
     for (int i = 0; i < MAX_RANKINGS; i++) {
         if (i < g_score_table.count) {
-            mvwprintw(win, 5 + i, 4, "%2d.   %-28.28s %8d",
+		char win_role = g_score_table.entries[i].winner_role;
+		if (win_role != 'A' && win_role != 'D') {
+			win_role = '-';
+		}
+
+    		mvwprintw(win, 5 + i, 4, "%2d.   %-28.28s %8d  [%c]",
                       i + 1,
                       g_score_table.entries[i].player1,
-                      g_score_table.entries[i].score);
+                      g_score_table.entries[i].score,
+		      win_role);
         } else {
-            mvwprintw(win, 5 + i, 4, "%2d.   %-28s %8s",
+            mvwprintw(win, 5 + i, 4, "%2d.   %-28s %8s  [-]",
                       i + 1, "---", "---");
         }
     }

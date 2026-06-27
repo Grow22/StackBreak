@@ -151,6 +151,10 @@ static void save_highscore(void) {
     g_state.score = calculate_final_score(g_state.attacker_hp,
                                           g_state.defscore,
                                           g_state.atkscore);
+    char current_winner = (g_state.attacker_hp <= 0) ? 'D' : 'A';
+
+    char combined_name[MAX_NAME_LEN * 2 + 4];
+    snprintf(combined_name, sizeof(combined_name), "%s&%s", g_player_names[0], g_player_names[1]);
     if (g_state.score <= 0) return;
     int previous_highscore = g_highscore;
 
@@ -177,6 +181,8 @@ static void save_highscore(void) {
     copy_score_name(g_score_table.entries[index].player1, g_player_names[0]);
     copy_score_name(g_score_table.entries[index].player2, g_player_names[1]);
     g_score_table.entries[index].score = g_state.score;
+    g_score_table.entries[index].winner_role = current_winner;
+
     sort_score_table();
     refresh_highscore();
     if (g_state.score > previous_highscore)

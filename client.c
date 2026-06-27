@@ -111,6 +111,8 @@ static void show_start_screen(const ScoreTable *rankings,
     mvwprintw(win, 3, 4, "High Score: %d",
               rankings->count > 0 ? rankings->entries[0].score : 0);
 
+    mvwprintw(win, 4, 4, "NO. PLAYER1 / PLAYER2");
+
     for (int i = 0; i < MAX_RANKINGS; i++) {
         if (i < rankings->count) {
             char team[MAX_NAME_LEN * 2 + 4];
@@ -121,6 +123,12 @@ static void show_start_screen(const ScoreTable *rankings,
             else
                 snprintf(team, sizeof(team), "%s",
                          rankings->entries[i].player1);
+
+	    char win_role = rankings->entries[i].winner_role;
+	    if (win_role != 'A' && win_role != 'D') {
+		    win_role = '-';
+	    }
+
             mvwprintw(win, 5 + i, 4, "%2d. %-36.36s %8d",
                       i + 1, team, rankings->entries[i].score);
         } else {

@@ -164,6 +164,7 @@ typedef struct {
     char player1[MAX_NAME_LEN];
     char player2[MAX_NAME_LEN];
     int score;
+    char winner_role;
 } ScoreEntry;
 
 typedef struct {
