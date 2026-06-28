@@ -54,7 +54,7 @@
 
 C 언어로 작성되었으며, TCP/IP 소켓 기반 클라이언트-서버 구조와 POSIX Threads를 활용하여 **같은 네트워크(Wi-Fi) 내 서로 다른 PC에서 실시간 대전**이 가능합니다.
 
-- **전체 코드 라인 수:** **4,466 라인** (`common.h` 274 + `server.c` 1,314 + `client.c` 1,047 + `local.c` 1,831)
+- **전체 코드 라인 수:**4,254** 라인** (`common.h` 262 + `server.c` 1,246 + `client.c` 1,067 + `local.c` 1,679)
 - **실행 환경:** Linux / WSL (Ubuntu)
 
 <br>
