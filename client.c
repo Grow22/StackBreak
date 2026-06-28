@@ -108,9 +108,12 @@ static void show_start_screen(const ScoreTable *rankings,
     wattroff(win, A_BOLD);
     mvwprintw(win, 2, 4, "Role: %s",
               g_role == 0 ? "ATTACKER" : "DEFENDER");
-    mvwprintw(win, 3, 4, "High Score: %d",
-              rankings->count > 0 ? rankings->entries[0].score : 0);
-
+    if (rankings->count > 0) {
+	    mvwprintw(win, 3, 4, "High Score: %d [%c]",
+              rankings->entries[0].score, rankings->entries[0].winner_role);
+    }
+    else 
+	    mvwprintw(win, 3, 4, "High Score: 0");
     mvwprintw(win, 4, 4, "NO. ATTACKER / DEFENDER			Score	Win");
     char win_role;
     for (int i = 0; i < MAX_RANKINGS; i++) {

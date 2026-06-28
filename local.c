@@ -1834,7 +1834,11 @@ static void show_start_screen(void) {
     wattron(win, A_BOLD);
     mvwprintw(win, 1, 20, "LOCAL LEADERBOARD");
     wattroff(win, A_BOLD);
-    mvwprintw(win, 2, 4, "High Score: %d [%c]", g_highscore, g_score_table.entries[0].winner_role);
+    if (g_highscore != 0)
+	    mvwprintw(win, 2, 4, "High Score: %d [%c]", g_highscore, g_score_table.entries[0].winner_role);
+    else
+	    mvwprintw(win, 2, 4, "High Score: %d [-]", g_highscore);
+
     mvwprintw(win, 4, 4, "Rank  Player                          Score  WIN");
 
     for (int i = 0; i < MAX_RANKINGS; i++) {
