@@ -166,6 +166,7 @@ static void load_highscore(void) {
     }
     sort_score_table();
     refresh_highscore();
+    write_score_table();
 }
 
 static void save_highscore(void) {
@@ -199,6 +200,7 @@ static void save_highscore(void) {
     copy_score_name(g_score_table.entries[index].player1, g_player_name);
     g_score_table.entries[index].player2[0] = '\0';
     g_score_table.entries[index].score = g_state.score;
+    g_score_table.entries[index].winner_role = (g_state.attacker_hp <= 0) ? 'D' : 'A';
     sort_score_table();
     refresh_highscore();
     if (g_state.score > previous_highscore)
@@ -1830,10 +1832,10 @@ static void show_start_screen(void) {
     box(win, 0, 0);
 
     wattron(win, A_BOLD);
-    mvwprintw(win, 1, 18, "LOCAL LEADERBOARD");
+    mvwprintw(win, 1, 20, "LOCAL LEADERBOARD");
     wattroff(win, A_BOLD);
-    mvwprintw(win, 2, 4, "High Score: %d", g_highscore);
-    mvwprintw(win, 4, 4, "Rank  Player                         Score  WIN");
+    mvwprintw(win, 2, 4, "High Score: %d [%c]", g_highscore, g_score_table.entries[0].winner_role);
+    mvwprintw(win, 4, 4, "Rank  Player                          Score  WIN");
 
     for (int i = 0; i < MAX_RANKINGS; i++) {
         if (i < g_score_table.count) {
